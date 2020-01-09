@@ -1,0 +1,105 @@
+gf3m_subs.c: In function ‘autocal’:
+gf3m_subs.c:964:3: warning: implicit declaration of function ‘open_pr_file’ [-Wimplicit-function-declaration]
+   file3 = open_pr_file(sinnam);
+   ^
+gf3m_subs.c:964:9: warning: assignment makes pointer from integer without a cast
+   file3 = open_pr_file(sinnam);
+         ^
+gf3m_subs.c:1076:13: warning: assignment makes pointer from integer without a cast
+       file1 = open_pr_file(ans);
+             ^
+gf3m_subs.c:688:22: warning: variable ‘save_gain’ set but not used [-Wunused-but-set-variable]
+   double d1, chisqr, save_gain[6], pfa[6], pfx[50], pfy[50], pfdy[50];
+                      ^
+gf3m_subs.c: In function ‘autocal3’:
+gf3m_subs.c:1138:9: warning: assignment makes pointer from integer without a cast
+   file3 = open_pr_file(outnam);
+         ^
+gf3m_subs.c: In function ‘comfil’:
+gf3m_subs.c:1743:12: warning: assignment makes pointer from integer without a cast
+     cffile = open_pr_file(filnam);
+            ^
+gf3m_subs.c: In function ‘dump’:
+gf3m_subs.c:2529:3: warning: implicit declaration of function ‘open_new_unf’ [-Wimplicit-function-declaration]
+   file1 = open_new_unf(filnam);
+   ^
+gf3m_subs.c:2529:9: warning: assignment makes pointer from integer without a cast
+   file1 = open_new_unf(filnam);
+         ^
+gf3m_subs.c: In function ‘find_bg’:
+gf3m_subs.c:2774:9: warning: variable ‘xmid’ set but not used [-Wunused-but-set-variable]
+   float xmid;
+         ^
+gf3m_subs.c: In function ‘find_bg2’:
+gf3m_subs.c:2809:15: warning: variable ‘bg’ set but not used [-Wunused-but-set-variable]
+   float a, y, bg;
+               ^
+gf3m_subs.c: In function ‘gfexec’:
+gf3m_subs.c:4259:9: warning: format ‘%s’ expects argument of type ‘char *’, but argument 3 has type ‘char (*)[256]’ [-Wformat=]
+         if (sscanf(ans+4,"%*f %s %*s",&q) < 1)
+         ^
+gf3m_subs.c:4272:9: warning: format ‘%s’ expects argument of type ‘char *’, but argument 3 has type ‘char (*)[256]’ [-Wformat=]
+         if (sscanf(ans+4,"%*f %*s %s",&q) < 1)
+         ^
+gf3m_subs.c: In function ‘gfhelp’:
+gf3m_subs.c:4422:10: warning: assignment makes pointer from integer without a cast
+     file = open_pr_file(outfn);
+          ^
+gf3m_subs.c: In function ‘gfinit’:
+gf3m_subs.c:4628:14: warning: assignment makes pointer from integer without a cast
+       prfile = open_pr_file(prfilnam);
+              ^
+gf3m_subs.c:4634:14: warning: assignment makes pointer from integer without a cast
+       prfile = open_pr_file(prfilnam);
+              ^
+gf3m_subs.c:4658:5: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+     if (file1 = fopen("gfinit.dat", "r")) 
+     ^
+gf3m_subs.c:4700:5: warning: suggest parentheses around assignment used as truth value [-Wparentheses]
+     if (file1 = fopen("gfinit.cmd", "r")) 
+     ^
+gf3m_subs.c: In function ‘lookup’:
+gf3m_subs.c:4947:11: warning: assignment makes pointer from integer without a cast
+   winfile = open_new_unf(filnam);
+           ^
+gf3m_subs.c: In function ‘slice’:
+gf3m_subs.c:5554:11: warning: assignment makes pointer from integer without a cast
+   winfile = open_pr_file(ans);
+           ^
+gf3m_subs.c: In function ‘storac’:
+gf3m_subs.c:5637:44: warning: assignment makes pointer from integer without a cast
+   if (!(file2 = fopen(outfn, "a+"))) file2 = open_pr_file(outfn);
+                                            ^
+gf3m_subs.c: In function ‘wrtsp’:
+gf3m_subs.c:6004:14: warning: assignment makes pointer from integer without a cast
+   if (!(file = open_new_unf(fn))) return 1;
+              ^
+gf3m_subs.c: In function ‘matread_slice’:
+gf3m_subs.c:6183:15: warning: ‘return’ with no value, in function returning non-void [-Wreturn-type]
+               return;
+               ^
+gf3m_subs.c:6204:15: warning: ‘return’ with no value, in function returning non-void [-Wreturn-type]
+               return;
+               ^
+gf3m_subs.c: In function ‘writeall’:
+gf3m_subs.c:6620:14: warning: assignment makes pointer from integer without a cast
+   if (!(file = open_new_unf(fn))) return 1;
+              ^
+gf3m_subs.c:6605:8: warning: variable ‘iext’ set but not used [-Wunused-but-set-variable]
+   int  iext;
+        ^
+gf3m_subs.c: In function ‘readall’:
+gf3m_subs.c:6669:8: warning: variable ‘iext’ set but not used [-Wunused-but-set-variable]
+   int  iext;
+        ^
+gf3m_subs.c: In function ‘hcopy_noninteractive’:
+gf3m_subs.c:6827:16: error: conflicting types for ‘open_pr_file’
+   extern FILE *open_pr_file(char *);
+                ^
+gf3m_subs.c:964:11: note: previous implicit declaration of ‘open_pr_file’ was here
+   file3 = open_pr_file(sinnam);
+           ^
+gf3m_subs.c:6818:31: warning: variable ‘istat’ set but not used [-Wunused-but-set-variable]
+   int    x = 0, y = 0, i, nc, istat, color;
+                               ^
+make: *** [gf3m_subs.o] Error 1

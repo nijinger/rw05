@@ -1,0 +1,8 @@
+PUT_FIRST_SO_MAKES_gf3m: gf3m
+
+include Makefile
+
+gf3m: gf3.c gf3m_subs.o caskx.o util.a minig.a
+	$(CC) $(CFLAGS) -o $@ gf3.c gf3m_subs.o caskx.o util.a minig.a \
+            $(HISLIBS) $(LIB_PATHS) $(LIBS)
+

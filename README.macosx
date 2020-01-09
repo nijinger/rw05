@@ -1,0 +1,87 @@
+
+Here are instructions for building rw05 on Mac OS X the way that I did it.
+
+1. Make sure Xcode and X11 are installed.
+=========================================
+
+OS 10.4 or later should come with Xcode and X11 pre-installed or on the DVD.
+Make sure they are installed. 
+You may also wish to update them. Go to 
+http://connect.apple.com/cgi-bin/WebObjects/MemberSite.woa/wa/downloads
+to download a newer version and any updates. If you don't have an
+Apple ID, you can create one by registering for free at
+http://developer.apple.com/programs/start/register/create.php
+
+
+2. Install tools and libraries.
+===============================
+
+You can do this in one of at least two ways:
+
+------------------
+A. USING MACPORTS:
+------------------
+
+Download and install MacPorts. You can get it, for example, from
+http://svn.macports.org/repository/macports/downloads/
+or use the instructions at
+http://trac.macports.org/wiki/InstallingMacPorts
+
+You may need to install the java development headers from the Apple
+Developer site:
+https://connect.apple.com/cgi-bin/WebObjects/MemberSite.woa/wa/getSoftware?bundleID=20719
+If you don't have an Apple ID, you can create one for free at
+http://developer.apple.com/programs/start/register/create.php
+
+Update MacPorts and its repository lists by typing
+    sudo port selfupdate
+
+Use MacPorts to install the following packages:
+[ readline ] - may already be on system in MacOSX10.*.sdk
+  lesstif     (required for xm* versions of gf3, gls, escl8r, etc)
+  gtk2        (required for gtk* versions of gls, escl8r, etc)
+
+You would normally do this from the terminal, by typing 
+     sudo port install <package-name>
+for each <package-name> above. Other dependent packages will also be 
+installed automatically, and the process will take some time.
+
+
+--------------
+B. USING FINK:
+--------------
+
+Download and install the Fink package-management software by following
+instructions at
+http://www.finkproject.org/doc/users-guide/install.php
+ 
+Start the Fink application. From the list of applications, choose the
+following packages to install:
+[ readline ] - may already be on system in MacOSX10.*.sdk
+  lesstif     (required for xm* versions of gf3, gls, escl8r, etc)
+  gtk2        (required for gtk* versions of gls, escl8r, etc)
+
+
+3. Build RadWare
+================
+
+Download the latest version of Radware. The build and install process
+is similar to that for other Linux/Unix systems, so refer to the README.
+
+Use Makefile.macosx as the starting point for your Makefile:
+    cd rw05/src
+    cp Makefile.macosx Makefile
+
+You may need to edit this Makefile to match your system.
+Again, please refer to the Linux/Unix README for other comments.
+Then build rw05 with the command
+    make
+
+You can run the programs directly from the rw05/src directory, or
+optionally install them in a different place. To do the install,
+edit the Makefile so that the install path and user/group details are
+appropriate for your system. Then run
+    make install
+
+For instructions on setting things up to run the programs easily,
+please look at sections 4) through 7) of the Linux/Unix README.
