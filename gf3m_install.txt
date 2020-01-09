@@ -1,0 +1,105 @@
+                 Installing RadWare with the gf3m add-on
+                          M. A. Caprio, 7/8/04
+
+Step 1.  Create the Radware source directory
+
+    The Radware files are available from http://radware.phy.ornl.gov.
+    The gf3m add-on has been compiled with RadWare 00 and RadWare
+    01 and might possibly work with subsequent versions as well.
+
+    Create a directory /usr/local/rw01 containing the RadWare
+    distribution files as follows.  (If you do not have root privileges,
+    you can carry out this procedure under your home directory instead.)
+
+    cd /usr/local
+    Copy the file rw01.1.0.tgz (or whatever version of Radaware you
+    are using) to /usr/local.
+    gunzip rw01.1.0.tgz
+    tar xvf rw01.1.0.tar    [This creates a subdirectory named rw01.]
+
+Step 2.  Add the gf3m files
+
+    Copy the files gf3m_subs.c and Makefile.gf3m to the RadWare source
+    file directory (/usr/local/rw01/src).
+
+Step 3.  Edit various RadWare settings for your installation (see the
+RadWare documentation for further help)
+
+    cd /usr/local/rw01/src
+
+    cp Makefile.linux Makefile    [or "cp Makefile.solaris Makefile", or as appropriate]
+   
+    Open the file Makefile in a text editor.
+
+    Change the lines starting with the words INSTALL_DIR, INSTALL, and
+    INSTALL_BIN to read as follows (you can choose a different
+    installation directory name if you wish):
+
+      INSTALL_DIR = /usr/local/rw01
+          INSTALL = /usr/sbin/install -m 0644
+      INSTALL_BIN = /usr/sbin/install -m 0755
+
+    Unless you are using the special Oak Ridge HIS libraries, delete
+    the line labeled HISLIBS in the Makefile if it is present.
+
+    On Linux systems without GNU readline installed, delete
+    "-DHAVE_GNU_READLINE" from the line labeled CFLAGS in the
+    Makefile, and delete "-lreadline -lncurses" from the line labeled
+    LIBS in the Makefile.  
+
+    If your computer has an unusual X Windows installation, you may
+    also need to edit the lines starting with the words X_WIN_TOP and
+    MOTIF_TOP to contain the names of the directories where the
+    X-Windows libraries are installed on your computer.  You must find
+    where these directories are on your computer.
+
+    Open the file .radwarerc in a text editor and change the second
+    through fourth lines to read as follows (or as appropriate if you
+    chose an installation directory other than /usr/local/rw01 above):
+
+    setenv RADWARE_FONT_LOC     /usr/local/rw01/font
+    setenv RADWARE_ICC_LOC      /usr/local/rw01/icc
+    setenv RADWARE_GFONLINE_LOC /usr/local/rw01/doc
+   
+Step 3.  Compile the RadWare programs and gf3m
+
+  If you want a complete RadWare installation (optional):
+
+    make all
+        Even if this crashes, you might still be able to make gf3m (below).
+    make install
+        This may crash at a late stage in the installation, which is fine...
+    make install-bin
+    make very-clean
+
+  For gf3m:
+
+    make -f Makefile.gf3m
+
+    This will create an executable file named gf3m.  Copy it to somewhere 
+    in your command path, e.g., "/usr/local/rw01/bin" or "/usr/local/bin".
+   
+Step 4.  Modifying users' initialization files
+
+  Each user who uses the csh or tcsh shell should modify his/her
+  .cshrc file as follows (assuming RadWare was installed to
+  /usr/local/rw01):
+
+   1. Add the line "source /usr/local/rw01/.radwarerc".
+
+   2. Put "/usr/local/rw01/bin" into the file search path.
+
+--------------------
+
+Suggestion for convenient display under Unix/Linux
+
+  If you would like gf3m to appear in its own separate terminal window
+  when you run it, put one of the following commands in a script file
+  (or a csh alias) and use that script file to start gf3m.  Which
+  command you use depends upon whether you have dtterm, kvt, or xterm
+  installed on your system.  These commands may need modification to
+  work properly on different systems.
+
+  dtterm -geometry 132x13+1+1 -name "gf3m: $cwd" -e gf3m >& /dev/null &
+  kvt -geometry 1000x220+1+1 -no_menubar -vt_size large -caption "gf3m: $cwd" -e gf3m >& /dev/null &
+  xterm -geometry 132x13+1+1 -name "gf3m: $cwd" -e gf3m >& /dev/null &

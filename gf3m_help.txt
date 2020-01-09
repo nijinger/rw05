@@ -1,0 +1,50 @@
+ gf3m -- gf3 spectrum analysis program, customized and matrix-enabled
+ 
+    Modifications are by M. A. Caprio, WNSL/CTP, Yale University.
+    Based upon gf3 version 0.0 from RadWare 99beta.2.12, by D. C. Radford, ORNL.
+    Revision 8/3/04.
+
+ Matrix gating
+   matr filename - read matrix projections from matrix file
+   projx, projy  - display x or y projection
+   gatex, gatey  - perform background-subtracted gate on x or y projection
+       Select gate region by clicking on leftmost and rightmost channels. If background
+       subtraction is desired, select one or more background regions.  Right click when
+       done.  Note: gatey is considerably faster than gatex due to the matrix file's
+       internal structure.
+   dim xdim ydim int_type swap_bytes [offset] - set dimensions for non-RadWare matrices
+       Most matrix files can be read by setting these parameters appropriately:
+       possibly unequal x and y dimensions up to 16384, 1/2/4-byte signed integers,
+       byte order reversal for matrices created on different machine types (0=OFF, 1=ON).
+       For a matrix which starts somewhere beyond the beginning of the file, e.g., after
+       a header or other histograms, specify the offset of the matrix in bytes.
+   rand 0|K singx singy - set up automatic time randoms subtraction using acceptance 
+       constant K and singles spectra singx and singy, or 0 to disable
+
+ Spectrum navigation
+   ge E   - display region centered on energy E (width is set with ex command)
+   gc ch  - display region centered on channel ch (width is set with ex command)
+   <left arrow><enter>, <right arrow><enter> - move left or right one window-full
+   ex [n] - if n specified, expand to n channels centered on current center (*)
+   back   - go back to previous display limits, i.e., undo last expansion or move
+       When ge or gc displays the energy or channel you request, it uses the
+       width set by the most recent ex command.  Tip for effective use: Use ex
+       once to set a convenient zoomed viewing width, e.g., 150 channels, and
+       then use ge to jump to the peaks you are interested in.
+
+ Spectrum display and analysis
+   nf     - FWHM now expressed as energy, quadratic bkgd. suppressed by default (*)
+   sy 0|1 - set "shared y-axis" mode
+       All overlayed spectra are displayed with the same y-axis range.  The Y0 and
+       NY commands make y-scale changes which are applied *immediately* to the
+       the next redisplay.  For NY 0, the upper y-scale limit is chosen to
+       accomodate all currently displayed spectra.
+
+ Spectrum saving and output
+   ra filename   - read all displayed spectra and display settings from a .gf3m file
+   wa filename   - write all displayed spectra and display settings to a .gf3m file
+   hc [filename] - if filename specified, PostScript output is written to file,
+        otherwise interactive print occurs -- removes several prompts to user (*)
+
+ (*) = modification to existing gf3 command
+
