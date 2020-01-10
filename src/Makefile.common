@@ -1,7 +1,7 @@
 ARCHIVES = gls.a minig.a mingtk.a util.a
 
 EXE = 4dg8r 4play addesc addmat algndiag calib_ascii combine divide \
-      dixie_gls drawstring effit encal energy escl8r foldout gf3 gf3x gls \
+      dixie_gls drawstring effit encal energy escl8r foldout gf3 gf3x gf3m gls \
       gls_conv incub8r legft levit8r lufwhm make4cub pedit plot plot2ps \
       pro3d pro4d pslice sdgen split4cub slice Source spec_ascii statft \
       subbgm2 subbgmat symmat unfold unfoldesc unix2unix vms2unix win2tab \
@@ -90,6 +90,9 @@ gf3: gf3.o gf3_subs.o caskx.o util.a minig.a
             $(HISLIBS) $(LIB_PATHS) $(LIBS)
 gf3x: gf3x.o gf3_subs.o caskx.o util.a minig.a
 	$(FC) $(CFLAGS) -o $@ gf3x.o gf3_subs.o caskx.o util.a minig.a \
+            $(HISLIBS) $(LIB_PATHS) $(LIBS)
+gf3m: gf3.c gf3m_subs.o caskx.o util.a minig.a
+	$(CC) $(CFLAGS) -o $@ gf3.c gf3m_subs.o caskx.o util.a minig.a \
             $(HISLIBS) $(LIB_PATHS) $(LIBS)
 unfold: unfold.o gf3_subs.o caskx.o util.a minig.a
 	$(FC) $(CFLAGS) -o $@ unfold.o gf3_subs.o caskx.o util.a minig.a \
