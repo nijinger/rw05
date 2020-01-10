@@ -67,7 +67,7 @@ int ffin(char *cin, int nc, float *out1, float *out2, float *out3)
     while (ilo < nc && cin[ilo] == ' ') ilo++;
     if (ilo >= nc) QUIT;
     ihi = ilo;
-    while (ihi < nc  && cin[ihi] != ' ' && cin[ihi] != ',') ihi++;
+    while (ihi < nc  && cin[ihi] != ' ' && cin[ihi] != ',' &&cin[ihi]!='\n' ) ihi++;
     if (ihi == ilo) continue;
     /* test = 0;
        for (i = ilo; i <= ihi; i++) {

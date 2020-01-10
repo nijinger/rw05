@@ -4491,6 +4491,32 @@ int gfexec(char *ans, int nc)
       char *command = malloc((nc-2)*sizeof(char));
       strncpy(command,ans+2,nc-2);
       system(command);
+  }else if (!strncmp(ans, "XC", 2)){
+      if(!gf3gd.disp) return 1;
+      int ix,iy;
+      float ich, ich1,ich2,x,y;
+
+      if(ffin(ans+2,nc-2,&ich,&ich1,&ich2)) goto BADCMD;
+
+      /*
+      gf3gd.mch[0]=ich;
+      dspmkr(1);
+      */
+      initg(&ix,&iy);
+      if(ich == 0) ich = (gf3gd.loch+gf3gd.hich)/2; 
+      if(ich > gf3gd.hich || ich < gf3gd.loch) {
+          printf("out of spectrum range!\n");
+          return 1;
+      }
+      x = ich;
+      y = (float)gf3gd.locnt;
+      pspot(x,y);
+      y = gf3gd.spec[(int)ich];
+      if(ich1==0)
+        vect(x,y);
+      else
+          vect(ich,ich1);
+      finig();
   }
   /*mc end new commands */
 
