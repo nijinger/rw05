@@ -1,20 +1,28 @@
-/* "gf3m" -- gf3_subs.c modified by M.A. Caprio */
+/* 
+15 -> 35
+51 -> 111
+(17*3) (37*3)
+ dump modified
+*/
 
 /* version 0.0   D.C. Radford    July 1999 */
-
+/* version 1.2   D.C. Radford    Oct  2005 */
 /* program version summary */
 /*mc*/
 char gf3m_header_str[]= " gf3m -- gf3 spectrum analysis program, customized and matrix-enabled\n"
   " \n"
   "    Modifications are by M. A. Caprio, WNSL/CTP, Yale University.\n"
   "    Based upon gf3 version 0.0 from RadWare 99beta.2.12, by D. C. Radford, ORNL.\n"
-  "    Revision 8/3/04.\n";
+  "    Revision 8/3/04.\n"
+  "    Revision 1/9/20. \n";
+  
   /*mc*/
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <math.h>
+#include <ctype.h>
 #include <string.h>
 #include <signal.h>
 
@@ -32,19 +40,17 @@ struct {
   int    nclook, lookmin, lookmax;          /* window lookup table */
   short  looktab[16384];
   int    mch[2];                            /* fit limits and peak markers */
-
-#define MAXNUMPKS 15
-#define FILENUMPKS 15
-  float  ppos[15];
-  float  pars[51], errs[51];                /* fit parameters and flags */
-  int    npars, nfp, freepars[51], npks, irelw, irelpos;
-  float  areas[15], dareas[15], cents[15];
+  float  ppos[35];
+  float  pars[111], errs[111];              /* fit parameters and flags */
+  int    npars, nfp, freepars[111], npks, irelw, irelpos;
+  float  areas[35], dareas[35], cents[35], dcents[35];
+  float  covariances[111][111];             /* covariances between parameters */
   int    pkfind, ifwhm, isigma, ipercent;   /* peak find stuff */
   int    maxch;                             /* current spectrum */
   char   namesp[8], filnam[80];
   float  spec[16384];
-  float  stoc[20][15], stodc[20][15];       /* stored areas and centroids */
-  float  stoa[20][15], stoda[20][15], stoe[20][15], stode[20][15];
+  float  stoc[20][35], stodc[20][35];       /* stored areas and centroids */
+  float  stoa[20][35], stoda[20][35], stoe[20][35], stode[20][35];
   int    isto[20];
   char   namsto[560];
   float  wtsp[16384];                       /* fit weight mode and spectrum */
@@ -71,25 +77,18 @@ struct {
 
 } gf3gd;
 
-/*  int maxx = 4095, maxy = 4095;
-  int matitype = 2, matswab = 0;
-  unsigned long matoffset = 0;
-*/
-
 FILE *file1, *file2, *file3, *scrfilea, *scrfileb, *winfile, *prfile = 0;
 char prfilnam[80] = "gf3.log";
+static int cfopen = 0;
 
-FILE *infile, *cffile;    /* command file flag and file descriptor*/
-int cflog;                /* command logging flag */
+extern FILE *infile, *cffile;    /* command file flag and file descriptor*/
+extern int cflog;                /* command logging flag */
 
-float derivs[51];
-
+float derivs[111];
 int   colormap[15] = { 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15 };
 int   ready = 0;
 int   winmod = 0;
 int   gotsignal;
-
-extern int matinv(double *array, int norder, int dim); /* in util.a */
 
 /* ==== routines defined here ==== */
 double channo(float egamma);
@@ -117,7 +116,6 @@ int dspfit(void);
 int dspmkr(int mkrnum);
 int dspsp(int in1, int in2, int in3);     /* returns 1 on error */
 int dspsp2(int in1, int in2, int in3, int in4);
-int dump(char *, int, int);
 int dump(char *filnam, int nc, int mode); /* mode = 0/1 to write/read dump */
 int encal(char *fn, int nc);
 int energy(float x, float dx, float *eg, float *deg); /* returns 1 on error */
@@ -133,7 +131,7 @@ int fix_para(int param, int fix_flag);
 int fixorfree(char *command, int nc);
 int getsp(char *filnam, int nc);          /* returns 1 on error */
 int gfexec(char *command, int nc);
-int gffin(int mode);                      /* mode = 1: do not display fit */
+int gffin(void);
 int gfhelp(char *ans);
 int gfinit(int argc, char **argv);
 int gfset(void);
@@ -154,7 +152,8 @@ int storac(int in);
 int sumcts(int mode, int loch, int hich);
   /* mode=0: sum without background subtraction
      mode=1: sum with    background subtraction */
-int typeit(int mode); 
+int sumcts_jch(void);
+int list_params(int mode); 
    /* imode = 1 to list limits and peak positions as well as fit pars */
 int weight(int weightmode);
 int wrtlook(void);
@@ -187,10 +186,9 @@ int adddelpk(int mode, int npeak)
   }
   if (mode == 1) {
     /* AP; add peak to fit */
-    if (gf3gd.npks >= 15) {
+    if (gf3gd.npks >= 35) {
       printf("Cannot - too many peaks.\n");
       return 1;
-
     }
     /* ask for peak position */
     while (1) {
@@ -223,6 +221,7 @@ int adddelpk(int mode, int npeak)
     gf3gd.areas[gf3gd.npks] = 0.f;
     gf3gd.dareas[gf3gd.npks] = 0.f;
     gf3gd.cents[gf3gd.npks] = gf3gd.ppos[gf3gd.npks];
+    gf3gd.dcents[gf3gd.npks] = 0.f;
     gf3gd.npks++;
     for (i = gf3gd.npars - 3; i < gf3gd.npars; ++i) {
       gf3gd.errs[i] = 0.f;
@@ -272,6 +271,9 @@ int adddelpk(int mode, int npeak)
 	  s = gf3gd.cents[i];
 	  gf3gd.cents[i] = gf3gd.cents[j];
 	  gf3gd.cents[j] = s;
+	  s = gf3gd.dcents[i];
+	  gf3gd.dcents[i] = gf3gd.dcents[j];
+	  gf3gd.dcents[j] = s;
 	  for (k = i * 3 + 6; k < i * 3 + 9; ++k) {
 	    l = (j-i) * 3 + k;
 	    s = gf3gd.pars[k];
@@ -308,6 +310,7 @@ int adddelpk(int mode, int npeak)
 	gf3gd.areas[i-1] = gf3gd.areas[i];
 	gf3gd.dareas[i-1] = gf3gd.dareas[i];
 	gf3gd.cents[i-1] = gf3gd.cents[i];
+	gf3gd.dcents[i-1] = gf3gd.dcents[i];
       }
       for (i = j; i <= gf3gd.npars; ++i) {
 	gf3gd.pars[i-1] = gf3gd.pars[i + 2];
@@ -482,6 +485,7 @@ int addwin(void)
 	  fprintf(winfile, 
 		  "  Chs%5d to%5d   P/T = %7.4f   Energy =%9.3f\n",
 		  ilo, ihi, area, eg);
+	  fflush(winfile);
 	  continue;
 	}
       }
@@ -643,6 +647,7 @@ int autobkgnd(int *maxspec)
     }
     ilo2 = ihi;
     ihi2 = ilo;
+    /* do three background-smoothing-type iterations */
     for (i = 1; i <= 3; ++i) {
       for (ich = ilo + 2; ich <= ihi - 2; ich += 5) {
 	x = (float) ich;
@@ -961,7 +966,7 @@ int autocal(void)
     i = setext(sinnam, ".sin", 120);
   }
   strcpy(sinnam+i, ".sin");
-  file3 = open_pr_file(sinnam);
+  file3 = open_save_file(sinnam, 1);
   strcpy(title, "AUTOCAL calibration, spectrum ");
   strcat(title, gf3gd.filnam);
   strcat(title, ",  .sou file: ");
@@ -1073,14 +1078,15 @@ int autocal(void)
       strncpy(ans, sinnam, 120);
       i = setext(ans, ".aca", 120);
       strcpy(ans+i, ".aca");
-      file1 = open_pr_file(ans);
-      fprintf(file1, "  ENCAL OUTPUT FILE\n"
-	             " gf3 AUTOCAL calibration, spectrum %s\n", gf3gd.filnam);
-      fprintf(file1, "%5d %18.11E %18.11E %18.11E\n"
-	             "      %18.11E %18.11E %18.11E\n", iorder,
-	      pfa[0], pfa[1], pfa[2], pfa[3], pfa[4], pfa[5]);
-      fclose(file1);
-      printf("   ...File %s created.\n", ans);
+      if ((file1 = open_new_file(ans, 0))) {
+	fprintf(file1, "  ENCAL OUTPUT FILE\n"
+		" gf3 AUTOCAL calibration, spectrum %s\n", gf3gd.filnam);
+	fprintf(file1, "%5d %18.11E %18.11E %18.11E\n"
+		"      %18.11E %18.11E %18.11E\n", iorder,
+		pfa[0], pfa[1], pfa[2], pfa[3], pfa[4], pfa[5]);
+	fclose(file1);
+	printf("   ...File %s created.\n", ans);
+      }
     }
   }
  DONE:
@@ -1135,10 +1141,10 @@ int autocal3(void)
   nc = cask(q, ans, 80);
   if (nc > 0) strncpy(outnam, ans, 80);
   setext(outnam, ".ca3", 80);
-  file3 = open_pr_file(outnam);
+  if (!(file3 = open_new_file(outnam, 0))) return 1;
 
   datetime(dattim);
-  fprintf(file3, "* gf2 autocalibrate type-3 output,  %.18s\n", dattim);
+  fprintf(file3, "* gf3 autocalibrate type-3 output,  %.18s\n", dattim);
   fprintf(file3,
 	  "* sp         a            b      Cent1  FWHM1      Cent2  FWHM2\n");
   sumspec = 0;
@@ -1146,8 +1152,7 @@ int autocal3(void)
     nc = cask("   ...desired energy dispersion = ?", ans, 80);
     if (!ffin(ans, nc, &edisp, &fj1, &fj2) && edisp > 0.f) {
       sumspec = 1;
-      numch = gf3gd.maxch + 1;
-      for (i = 0; i < numch; ++i) {
+      for (i = 0; i < 16384; ++i) {
 	spsum[i] = 0.f;
       }
       break;
@@ -1161,9 +1166,9 @@ int autocal3(void)
     if (sscanf(line, " %d, %d, %f, %d, %d, %f, %d, %d, %d",
 	       &splo, &sphi, &eg[0], &chlo[0], &chhi[0],
 	       &eg[1], &chlo[1], &chhi[1], &fwhm0) != 9 ||
-	splo > sphi || splo < 0 || sphi > 999) {
+	splo > sphi || splo < 0 || sphi > 99999) {
       file_error("read", limnam);
-      if (splo > sphi || splo < 0 || sphi > 999)
+      if (splo > sphi || splo < 0 || sphi > 99999)
 	printf(" Spectrum lo, hi numbers out of order or out of bounds!\n");
       fclose(file2);
       fclose(file3);
@@ -1212,8 +1217,9 @@ int autocal3(void)
 	  newch1 = eg[0] / edisp;
 	  newch2 = eg[1] / edisp;
 	  mode = 1;
+	  if (numch < gf3gd.maxch + 1) numch = gf3gd.maxch + 1;
 	  adjgain(mode, &oldch1, &oldch2, &newch1, &newch2, gf3gd.spec, 
-		  spsum, numch, numch, 1.f);
+		  spsum, gf3gd.maxch + 1, numch, 1.f);
 	}
       }
       if (!caskyn("...OK? (Y/N)")) continue;
@@ -1239,6 +1245,7 @@ int autocal3(void)
       gf3gd.spec[i] = spsum[i];
     }
     strncpy(gf3gd.namesp, "CA3_SUM ", 8);
+    gf3gd.maxch = numch - 1;
   }
   return 0;
 } /* autocal3 */
@@ -1292,11 +1299,11 @@ int autocal4(void)
     peak++;
   }
   /* now check for a calib.sou file */
-  if (!(file1 = open_readonly("calib.sou"))) {
+  if (!(file1 = fopen("calib.sou", "r"))) {
     /* try in the home directory */
     get_directory("HOME", fullname, 100);
     strcat(fullname, "calib.sou");
-    file1 = open_readonly(fullname);
+    file1 = fopen(fullname, "r");
   }
   if (file1) {
     printf(" Data from file calib.sou:\n ID                Energy\n");
@@ -1306,7 +1313,7 @@ int autocal4(void)
       sscanf(ans, " %f", &sou[nl]);
     }
   } else {
-    printf(" No file calib.sou was found.\n"
+    printf(" No file calib.sou or HOME/calib.sou was found.\n"
 	   " You can create calib.sou to make this part easier!\n");
   }
   for (peak = 0; peak < 2; ++peak) {
@@ -1347,10 +1354,10 @@ int autocal4(void)
 /* ======================================================================= */
 int autofit(float *sens)
 {
-  float save[16384], pmax, fwhm0, s, w, x, y, chanx[20];
-  float psize[20], x1, x2, rsigma, ref, fj;
+  float save[16384], pmax, fwhm0, s, w, x, y, chanx[100];
+  float psize[100], x1, x2, rsigma, ref, fj;
   int   i, j, fitter_rtn, jfwhm, maxpk, first;
-  int   quit_next, maxits, ipk, npk, nc;
+  int   quit_next, maxits, ipk, npk, nc, j1, j2;
   char  ans[80];
 
   /* sensitivity */
@@ -1385,7 +1392,7 @@ int autofit(float *sens)
   if (fwhm0 < 3.f) fwhm0 = 3.f;
   jfwhm = rint(fwhm0);
   rsigma = 4.f / *sens;
-  maxpk = 20;
+  maxpk = 100;
   while (1) {
     pfind(chanx, psize, gf3gd.mch[0], gf3gd.mch[1], jfwhm, rsigma, maxpk, &npk);
     printf(" %d %.2f %.2f\n", npk, chanx[0]-1.f, chanx[npk-1]-1.f);
@@ -1393,7 +1400,7 @@ int autofit(float *sens)
       printf("No peaks found in that region, sorry!\n");
       return 1;
     }
-    if (npk <= 15) break;
+    if (npk <= 30) break;
     rsigma *= 1.5f;
   }
   pmax = -100.f;
@@ -1436,10 +1443,11 @@ int autofit(float *sens)
     for (i = 1; i <= gf3gd.npks; ++i) {
       if (gf3gd.pars[i*3 + 5] < 0.f) {
 	if (!first) {
-	  printf("One of the peaks went negative, ending autofit...\n");
+	  printf("One of the peaks (at %.2f -> %.2f) went negative, ending autofit...\n",
+		 gf3gd.ppos[i-1], gf3gd.pars[i*3 + 3]);
 	  quit_next = 1;
 	}
-	printf("Deleting negative peak %d of %d\n", i, gf3gd.npks);
+	printf("Deleting negative peak %d of %d, at %.2f\n", i, gf3gd.npks, gf3gd.ppos[i-1]);
 	if (gf3gd.npks < 2) {
 	  printf("Sorry, not enough peaks...\n");
 	  return 1;
@@ -1451,7 +1459,7 @@ int autofit(float *sens)
       if (gf3gd.pars[i*3 + 3] < (float) gf3gd.mch[0] ||
 	  gf3gd.pars[i*3 + 3] > (float) gf3gd.mch[1]) {
 	printf("ACKK! One of the peaks moved outside the fitted region!\n"
-	       "Deleting peak %d of %d\n", i, gf3gd.npks);
+	       "Deleting peak %d of %d, at %.2f\n", i, gf3gd.npks, gf3gd.ppos[i-1]);
 	if (gf3gd.npks < 2) {
 	  printf("Sorry, not enough peaks...\n");
 	  return 1;
@@ -1463,38 +1471,45 @@ int autofit(float *sens)
       gf3gd.ppos[i-1] = gf3gd.pars[i*3 + 3];
     }
 
-    if (gf3gd.npks == 15 || quit_next) break;
+    if (gf3gd.npks == 35 || quit_next) break;
     first = 0;
 
     /* do peak search on the residuals, and add at most one peak */
+    j1 = gf3gd.mch[0] - jfwhm;
+    j2 = gf3gd.mch[1] + jfwhm;
+    if (j1 < 0) j1 = 0;
+    if (j2 > gf3gd.maxch) j2 = gf3gd.maxch;
     eval(gf3gd.pars, 0, &y, gf3gd.npks, -9);
-    for (i = gf3gd.mch[0]; i <= gf3gd.mch[1]; ++i) {
+    for (i = j1; i <= j2; ++i) {
       save[i] = gf3gd.spec[i];
       eval(gf3gd.pars, i, &y, gf3gd.npks, 0);
-      w = gf3gd.spec[i];
+      /* w = gf3gd.spec[i]; */
+      w = y;
       if (w < 1.f) w = 1.f;
       gf3gd.spec[i] = (gf3gd.spec[i] - y) / sqrt(w);
     }
     rsigma = 2.f / *sens;
-    maxpk = 20;
+    maxpk = 100;
+    printf("fwhm for search is %d\n", jfwhm);
     while (1) {
-      pfind(chanx, psize, gf3gd.mch[0], gf3gd.mch[1], jfwhm, rsigma, maxpk, &npk);
+      /* pfind(chanx, psize, gf3gd.mch[0], gf3gd.mch[1], jfwhm, rsigma, maxpk, &npk); */
+      pfind(chanx, psize, j1, j2, jfwhm, rsigma, maxpk, &npk);
       printf("%d residual peaks found...\n", npk);
-      if (npk <= 10) break;
+      if (npk <= 20) break;
       rsigma *= 1.5f;
     }
-    for (i = gf3gd.mch[0]; i <= gf3gd.mch[1]; ++i) {
+    for (i = j1; i <= j2; ++i) {
       gf3gd.spec[i] = save[i];
     }
     if (npk <= 0) break;
 
     /* not all done, there are more peaks to add */
     pmax = -100.f;
-    for (ipk = 1; ipk <= npk; ++ipk) {
-      printf("%3d %9.2f %9.0f\n", ipk, chanx[ipk-1] - 1.f, psize[ipk-1]);
-      if (psize[ipk-1] > pmax) {
-	pmax = psize[ipk-1];
-	gf3gd.ppos[gf3gd.npks] = chanx[ipk-1] - 1.f;
+    for (ipk = 0; ipk < npk; ++ipk) {
+      printf("%3d %9.2f %9.0f\n", ipk+1, chanx[ipk] - 1.f, psize[ipk]);
+      if (psize[ipk] > pmax) {
+	pmax = psize[ipk];
+	gf3gd.ppos[gf3gd.npks] = chanx[ipk] - 1.f;
       }
     }
     printf("Adding peak at %.2f\n", gf3gd.ppos[gf3gd.npks]);
@@ -1521,13 +1536,10 @@ int autofit(float *sens)
   gfexec(ans, 2);
   strcpy(ans, "DF");
   gfexec(ans, 2);
-  if (fitter_rtn == 2) {
-    gffin(1);
+  if (fitter_rtn == 2)
     printf(" WARNING - convergence failed.\n"
 	   "  Do not believe quoted parameter values!\n");
-  } else {
-    gffin(0);
-  }
+  gffin();
   return 0;
 } /* autofit */
 
@@ -1683,8 +1695,43 @@ int chngmark(int mnum)
 /* ======================================================================= */
 int comfil(char *filnam, int nc)
 {
-  static int cfopen = 0;
+  int  iw = 0, j;
+  char *c;
+  FILE *file;
+  static FILE *cf_file[20];
+  static char cmd_fn[20][80];
+  static int  cf_depth = 0;
 
+  if (!strncmp(filnam, "SH", 2)) {
+    /* open a pipe to a shell command */
+    if (cf_depth > 18) {
+      warn("%c*** Sorry.  I can't open another shell or command file.\n"
+	   "    You have nested too many already.\n", '\7');
+      return 1;
+    }
+    if (!(file = popen(filnam+2, "r"))) {
+      printf("ERROR -- pipe not opened!  Shell command = %s\n", filnam+2);
+      return 1;
+    }
+    if (cflog) fclose(cffile);
+    cflog = 0;
+    /* if there is a file open, but not actively being read (from cf chk)
+       then close it and decriment cf_depth */
+    if (cfopen && cf_depth > 0 && !infile) {
+      tell("Closing shell or command file %d: %s\n", cf_depth-1, cmd_fn[cf_depth-1]);
+      fclose(cffile);
+      --cf_depth;
+    }
+
+    cfopen = 1;
+    infile = cffile = file;
+    strncpy(cmd_fn[cf_depth], filnam, 80);
+    cf_file[cf_depth++] = file;
+    tell("Opened shell %d: %s\n", cf_depth-1, filnam+2);
+    return 0;
+  }
+
+  /* not a shell; handle command file commands */
   strncpy(filnam, "  ", 2);
   if (nc < 3) {
     /* ask for command file name */
@@ -1692,19 +1739,29 @@ int comfil(char *filnam, int nc)
     infile = 0;
     nc = cask("Command file name = ? (default .ext = .cmd)", filnam, 80);
     if (nc == 0) return 0;
+  } else if ((c = strstr(filnam, "WAI")) ||
+	     (c = strstr(filnam, "wai"))) {
+    inin(c + 3, strlen(c + 3), &iw, &j, &j);
   }
-  
   setext(filnam, ".cmd", 80);
+
   if (!strncmp(filnam, "END", 3) || !strncmp(filnam, "end", 3)) {
-    /* close command file, lu IR = console */
+    /* close command file */
     if (cfopen || cflog) {
+      tell("Closing shell or command file %d: %s\n", cf_depth-1, cmd_fn[cf_depth-1]);
       fclose(cffile);
+      if (--cf_depth > 0) {
+	cfopen = 1;
+	infile = cffile = cf_file[cf_depth-1];
+	tell("Now returning to shell or command file %d: %s\n", cf_depth-1, cmd_fn[cf_depth-1]);
+      } else {
+	cfopen = 0;
+	infile = 0;
+      }
     } else {
       printf("Command file not open.\n");
     }
-    cfopen = 0;
     cflog = 0;
-    infile = 0;
   } else if (!strncmp(filnam, "CON", 3) || !strncmp(filnam, "con", 3)) {
     if (cfopen) {
       infile = cffile;
@@ -1721,39 +1778,71 @@ int comfil(char *filnam, int nc)
     }
   } else if (!strncmp(filnam, "ERA", 3) || !strncmp(filnam, "era", 3)) {
     erase();
+  } else if (!strncmp(filnam, "WAI", 3) || !strncmp(filnam, "wai", 3)) {
+    if (iw <= 0) return 0;
+    gotsignal = 0;
+    signal(SIGINT, breakhandler);
+    sleep(iw);
+    signal(SIGINT, SIG_DFL);
+    if (gotsignal) infile = 0;
   } else if (!strncmp(filnam, "LOG", 3) || !strncmp(filnam, "log", 3)) {
-    if (cfopen || cflog) fclose(cffile);
     while (1) {
-      cfopen = 0;
-      cflog = 0;
-      infile = 0;
-      nc = cask("File name for command logging = ? (default .ext = .cmd)",
-		filnam, 80);
+      nc = askfn(filnam, 80, "", ".cmd", "File name for command logging = ?");
       if (nc == 0) return 0;
-      setext(filnam, ".cmd", 80);
       if (strncmp(filnam, "END", 3) && strncmp(filnam, "end", 3) &&
 	  strncmp(filnam, "CON", 3) && strncmp(filnam, "con", 3) &&
 	  strncmp(filnam, "CHK", 3) && strncmp(filnam, "chk", 3) &&
 	  strncmp(filnam, "ERA", 3) && strncmp(filnam, "era", 3) &&
-	  strncmp(filnam, "LOG", 3) && strncmp(filnam, "log", 3)) break;
+	  strncmp(filnam, "WAI", 3) && strncmp(filnam, "wai", 3) &&
+	  strncmp(filnam, "LOG", 3) && strncmp(filnam, "log", 3) &&
+	  strncmp(filnam, "SH", 2)) break;
       printf("*** That is an illegal command file name. ***\n");
     }
     /* open log command file for output
-       all input from lu IR to be copied to lu ICF */
-    cffile = open_pr_file(filnam);
-    cflog = 1;
+       all input from stdin will be copied to log file */
+    if ((file = open_new_file(filnam, 0))) {
+      if (cfopen || cflog) fclose(cffile);
+      cf_depth = 0;
+      cfopen = 0;
+      cflog = 0;
+      infile = 0;
+      cflog = 1;
+      cffile = file;
+    }
   } else {
     /* CF filename
-       open command file for input on lu IR */
-    if (cfopen || cflog) fclose(cffile);
-    cflog = 0;
-    if (!(cffile = fopen(filnam, "r+"))) {
+       open command file for input */
+    if (cfopen && cf_depth > 0 && !strncmp(filnam, cmd_fn[cf_depth-1], 79)) {
+      tell("Rewinding commmand file %d: %s\n", cf_depth-1, filnam);
+      rewind(cffile);
+      infile = cffile;
+      return 0;
+    }
+    if (cf_depth > 18) {
+      warn("%c*** Sorry.  I can't open another shell or command file.\n"
+	   "    You have nested too many already.\n", '\7');
+      return 1;
+    }
+
+    if (!(file = fopen(filnam, "r+"))) {
       file_error("open", filnam);
-      cfopen = 0;
       goto GETFILNAM;
     }
+    if (cflog) fclose(cffile);
+    cflog = 0;
+    /* if there is a file open, but not actively being read (from cf chk)
+       then close it and decriment cf_depth */
+    if (cfopen && cf_depth > 0 && !infile) {
+      tell("Closing shell or command file %d: %s\n", cf_depth-1, cmd_fn[cf_depth-1]);
+      fclose(cffile);
+      --cf_depth;
+    }
+
     cfopen = 1;
-    infile = cffile;
+    infile = cffile = file;
+    strncpy(cmd_fn[cf_depth], filnam, 80);
+    cf_file[cf_depth++] = file;
+    tell("Opened commmand file %d: %s\n", cf_depth-1, filnam);
   }
   return 0;
 } /* comfil */
@@ -1866,21 +1955,6 @@ int curse(int *chnum)
 	printf("     Ch = %5d  Cnts = %10.0f  y = %10.0f  Energy = %.2f\n",
 	       *chnum, gf3gd.spec[*chnum], y, eg);
       }
-	
-      /*mc An alternative, which does not truncates your cursor position reading to 
-        the nearest channel, follows.  This wld be misleading, though, since bar for
-        channel ch is centered on position ch + 0.5. */
-      /*
-      if (energy(x, dx, &eg, &deg)) {
-	printf("     Ch = %8.2f  Cnts = %10.0f  y = %.0f\n",
-	       x, gf3gd.spec[*chnum], y);
-      } else {
-	printf("     Ch = %8.2f  Cnts = %10.0f  y = %.0f  Energy = %8.2f\n",
-	       x, gf3gd.spec[*chnum], y, eg);
-      }
-      */
-      /*mc*/
-
     }
   }
 } /* curse */
@@ -2099,21 +2173,17 @@ int dofit(int npks)
 
   /* do fit */
   k = fitter(maxits);
-  if (k == 2) {
-    gffin(1);
-    printf(" WARNING - convergence failed.\n"
-	   "  Do not believe quoted parameter values!\n");
-  } else if (k != 1) {
-    /* display fit and difference and list parameters */
-    gffin(0);
-  }
+  if (k == 2) printf(" WARNING - convergence failed.\n"
+		     "  Do not believe quoted parameter values!\n");
+  /* display fit and list parameters */
+  if (k != 1) gffin();
   return 0;
 } /* dofit */
 
 /* ======================================================================= */
 int dspfit(void)
 {
-  float y, x1, y1, b[3*MAXNUMPKS+6], save[16384];
+  float y, x1, y1, b[111], save[16384];
   int   i, j, hi, lo, nx, ny, ihi, ilo;
 
   lo = gf3gd.mch[0];
@@ -2155,7 +2225,7 @@ int dspfit(void)
 	y = gf3gd.spec[i] - y + y1;
 	vect(x1, y);
   }
-  /* display each peak seperately */
+  /* display each peak separately */
   if (gf3gd.npks > 1) {
     for (i = 0; i < 6; ++i) {
       b[i] = 0.f;
@@ -2188,7 +2258,7 @@ int dspfit(void)
 /* ======================================================================= */
 int dspmkr(int mkrnum)
 {
-  static char mchar[] = "123456789ABCDEFGHIJKLMNOP"; /* must be at least MAXNUMPKS long*/
+  static char mchar[35] = "123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
   float x, y;
   int   i, ix, iy, ich;
 
@@ -2265,8 +2335,6 @@ int dspsp(int in1, int in2, int in3)
   }
   gf3gd.nchs = gf3gd.hich - gf3gd.loch + 1;
   ncc = 1;
-
-  /*mc note: here the y-scale is set for spectrum display */
   if (hicnt == 0.f || ! ((in1 == -1 && in2 == 0) || in3 == -1)) {
     hicnt = (float) (gf3gd.locnt + gf3gd.ncnts);
     if (gf3gd.ncnts <= 0) {
@@ -2419,9 +2487,10 @@ int dspsp2(int in1, int in2, int in3, int in4)
 /* ====================================================================== */
 int dump(char *filnam, int nc, int mode)
 {
-  int  icsave, filerr = 0, rlen1, rlen2;
-  char test[20], dattim[20], q[120];
-  static char head[20] = "GELIFT ver. 6.1 dump";
+  int  i, icsave, filerr = 0, rlen, rl = 0, newtype;
+  char dattim[20], q[120], buf[19712];
+  static char head1[20] = "GELIFT ver. 6.1 dump";
+  static char head2[20] = "gf3 version 1.0 dump";
 
   strncpy(filnam, "  ", 2);
   while (1) {
@@ -2438,77 +2507,134 @@ int dump(char *filnam, int nc, int mode)
     /* read dump from disk */
     if (!(file1 = open_readonly(filnam))) continue;
 
-#define R(a,b,c) (fread(b,c,a,file1) != a)
-    if (R(1, &rlen1, 4) ||
-	R(1, test, 20) ||
-	R(1, dattim, 20) ||
-	R(1, &rlen1, 4) ||
-	strncmp(test, head, 20)) {
+#define RR { rlen = get_file_rec(file1, buf, sizeof(buf), -1); rl = 0; }
+#define R(a,b,c) { memcpy(b, buf + rl, c*a); rl += c*a; }
+    RR;
+    if (rlen < 38 ||
+	rlen > 42 ||
+	(strncmp(buf, head1, 20) && strncmp(buf, head2, 20))) {
       file_error("read", filnam);
       fclose(file1);
       continue;
     }
     break;
   }
-  sprintf(q, "Dump was done at %.18s...\n Proceed to read dump? (Y/N)", dattim);
+  newtype = strncmp(buf, head1, 20);
+  sprintf(q, "Dump was done at %.18s...\n Proceed to read dump? (Y/N)",
+	  buf+20);
   if (!caskyn(q)) {
     fclose(file1);
     return 0;
   }
+
   icsave = gf3gd.ical;
-  if (R(1, &rlen2, 4) ||
-      R(2, gf3gd.mch, 4) ||
-      R(FILENUMPKS, gf3gd.ppos, 4) ||
-      R(1, &gf3gd.irelw, 4) ||
-      R(3*FILENUMPKS+6, gf3gd.pars, 4) ||
-      R(3*FILENUMPKS+6, gf3gd.freepars, 4) ||
-      R(1, &gf3gd.npars, 4) ||
-      R(1, &gf3gd.nfp, 4) ||
-      R(3*FILENUMPKS+6, gf3gd.errs, 4) ||
-      R(1, &gf3gd.npks, 4) ||
-      R(1, &gf3gd.irelpos, 4) ||
-      R(FILENUMPKS, gf3gd.areas, 4) ||
-      R(FILENUMPKS, gf3gd.dareas, 4) ||
-      R(FILENUMPKS, gf3gd.cents, 4) ||
-      R(1, &ready, 4) ||
-      R(1, &gf3gd.wtmode, 4) ||
-      R(5, gf3gd.finest, 4) ||
-      R(3, gf3gd.infix, 4) ||
-      R(6, gf3gd.gain, 8) ||
-      R(1, &gf3gd.ical, 4) ||
-      R(1, &gf3gd.nterms, 4) ||
-      R(1, &gf3gd.lox, 4) ||
-      R(1, &gf3gd.numx, 4) ||
-      R(1, &gf3gd.locnt, 4) ||
-      R(1, &gf3gd.ncnts, 4) ||
-      R(1, &gf3gd.iyaxis, 4) ||
-      R(3, gf3gd.swpars, 4) ||
-      R(1, &gf3gd.infixrw, 4) ||
-      R(1, &gf3gd.infixw, 4) ||
-      R(15, colormap, 4) ||
-      R(1, &gf3gd.pkfind, 4) ||
-      R(1, &gf3gd.ifwhm, 4) ||
-      R(1, &gf3gd.isigma, 4) ||
-      R(1, &gf3gd.ipercent, 4)) {
+  RR;
+  if (rlen <= 0) {
     ready = 0;
     file_error("read", filnam);
     fclose(file1);
     return 1;
   }
-  if (caskyn("Take stored areas and centroids from dump? (Y/N)")) {
-    if (R(300, gf3gd.stoc[0], 4) ||
-	R(300, gf3gd.stodc[0], 4) ||
-	R(300, gf3gd.stoa[0], 4) ||
-	R(300, gf3gd.stoda[0], 4) ||
-	R(300, gf3gd.stoe[0], 4) ||
-	R(300, gf3gd.stode[0], 4) ||
-	R(20, gf3gd.isto, 4) ||
-	R(20, gf3gd.namsto, 28)) {
-      file_error("read", filnam);
-      fclose(file1);
-      return 1;
+  if (newtype) {
+    R(2, gf3gd.mch, 4);
+    R(35, gf3gd.ppos, 4);
+    R(1, &gf3gd.irelw, 4);
+    R(111, gf3gd.pars, 4);
+    R(111, gf3gd.freepars, 4);
+    R(1, &gf3gd.npars, 4);
+    R(1, &gf3gd.nfp, 4);
+    R(111, gf3gd.errs, 4);
+    R(1, &gf3gd.npks, 4);
+    R(1, &gf3gd.irelpos, 4);
+    R(35, gf3gd.areas, 4);
+    R(35, gf3gd.dareas, 4);
+    R(35, gf3gd.cents, 4);
+    R(35, gf3gd.dcents, 4)
+    R(1, &ready, 4);
+    R(1, &gf3gd.wtmode, 4);
+    R(5, gf3gd.finest, 4);
+    R(3, gf3gd.infix, 4);
+    R(6, gf3gd.gain, 8);
+    R(1, &gf3gd.ical, 4);
+    R(1, &gf3gd.nterms, 4);
+    R(1, &gf3gd.lox, 4);
+    R(1, &gf3gd.numx, 4);
+    R(1, &gf3gd.locnt, 4);
+    R(1, &gf3gd.ncnts, 4);
+    R(1, &gf3gd.iyaxis, 4);
+    R(3, gf3gd.swpars, 4);
+    R(1, &gf3gd.infixrw, 4);
+    R(1, &gf3gd.infixw, 4);
+    R(15, colormap, 4);
+    R(1, &gf3gd.pkfind, 4);
+    R(1, &gf3gd.ifwhm, 4);
+    R(1, &gf3gd.isigma, 4);
+    R(1, &gf3gd.ipercent, 4);
+    if (caskyn("Take stored areas and centroids from dump? (Y/N)")) {
+      R(700, gf3gd.stoc[0], 4);
+      R(700, gf3gd.stodc[0], 4);
+      R(700, gf3gd.stoa[0], 4);
+      R(700, gf3gd.stoda[0], 4);
+      R(700, gf3gd.stoe[0], 4);
+      R(700, gf3gd.stode[0], 4);
+      R(20, gf3gd.isto, 4);
+      R(20, gf3gd.namsto, 28);
+    }
+
+  } else {
+    R(2, gf3gd.mch, 4);
+    R(15, gf3gd.ppos, 4);
+    R(1, &gf3gd.irelw, 4);
+    R(51, gf3gd.pars, 4);
+    R(51, gf3gd.freepars, 4);
+    R(1, &gf3gd.npars, 4);
+    R(1, &gf3gd.nfp, 4);
+    R(51, gf3gd.errs, 4);
+    R(1, &gf3gd.npks, 4);
+    R(1, &gf3gd.irelpos, 4);
+    R(15, gf3gd.areas, 4);
+    R(15, gf3gd.dareas, 4);
+    R(15, gf3gd.cents, 4);
+    R(1, &ready, 4);
+    R(1, &gf3gd.wtmode, 4);
+    R(5, gf3gd.finest, 4);
+    R(3, gf3gd.infix, 4);
+    R(6, gf3gd.gain, 8);
+    R(1, &gf3gd.ical, 4);
+    R(1, &gf3gd.nterms, 4);
+    R(1, &gf3gd.lox, 4);
+    R(1, &gf3gd.numx, 4);
+    R(1, &gf3gd.locnt, 4);
+    R(1, &gf3gd.ncnts, 4);
+    R(1, &gf3gd.iyaxis, 4);
+    R(3, gf3gd.swpars, 4);
+    R(1, &gf3gd.infixrw, 4);
+    R(1, &gf3gd.infixw, 4);
+    R(15, colormap, 4);
+    R(1, &gf3gd.pkfind, 4);
+    R(1, &gf3gd.ifwhm, 4);
+    R(1, &gf3gd.isigma, 4);
+    R(1, &gf3gd.ipercent, 4);
+    if (caskyn("Take stored areas and centroids from dump? (Y/N)")) {
+      R(300, gf3gd.stoc[0], 4);
+      R(300, gf3gd.stodc[0], 4);
+      R(300, gf3gd.stoa[0], 4);
+      R(300, gf3gd.stoda[0], 4);
+      R(300, gf3gd.stoe[0], 4);
+      R(300, gf3gd.stode[0], 4);
+      R(20, gf3gd.isto, 4);
+      R(20, gf3gd.namsto, 28);
+    }
+    RR;
+    if (rlen > 0) {
+      R(15, gf3gd.dcents, 4);       /* centroid uncertainties added sept 2005 */
+    } else {
+      for (i=0; i<15; i++) {
+	gf3gd.dcents[i] = gf3gd.errs[i*3 + 6];
+      }
     }
   }
+#undef RR
 #undef R
   fclose(file1);
   if (icsave > 1) {
@@ -2526,59 +2652,60 @@ int dump(char *filnam, int nc, int mode)
 
   /* write dump to disk */
  WRITEDUMP:
-  file1 = open_new_unf(filnam);
+  if (!(file1 = open_new_file(filnam, 0))) {
+    printf("...No dump written!\n");
+    return 1;
+  }
   datetime(dattim);
   strncpy(dattim+18, "  ", 2);
-#define W(a,b,c) (fwrite(b,c,a,file1) != a)
-  rlen1 = 40;
-  rlen2 = 8932;
-  if (W(1, &rlen1, 4) ||
-      W(1, head, 20) ||
-      W(1, dattim, 20) ||
-      W(1, &rlen1, 4) ||
-      W(1, &rlen2, 4) ||
-      W(2, gf3gd.mch, 4) ||
-      W(FILENUMPKS, gf3gd.ppos, 4) ||
-      W(1, &gf3gd.irelw, 4) ||
-      W(3*FILENUMPKS+6, gf3gd.pars, 4) ||
-      W(3*FILENUMPKS+6, gf3gd.freepars, 4) ||
-      W(1, &gf3gd.npars, 4) ||
-      W(1, &gf3gd.nfp, 4) ||
-      W(3*FILENUMPKS+6, &gf3gd.errs[0], 4) ||
-      W(1, &gf3gd.npks, 4) ||
-      W(1, &gf3gd.irelpos, 4) ||
-      W(FILENUMPKS, gf3gd.areas, 4) ||
-      W(FILENUMPKS, gf3gd.dareas, 4) ||
-      W(FILENUMPKS, gf3gd.cents, 4) ||
-      W(1, &ready, 4) ||
-      W(1, &gf3gd.wtmode, 4) ||
-      W(5, gf3gd.finest, 4) ||
-      W(3, gf3gd.infix, 4) ||
-      W(6, gf3gd.gain, 8) ||
-      W(1, &gf3gd.ical, 4) ||
-      W(1, &gf3gd.nterms, 4) ||
-      W(1, &gf3gd.lox, 4) ||
-      W(1, &gf3gd.numx, 4) ||
-      W(1, &gf3gd.locnt, 4) ||
-      W(1, &gf3gd.ncnts, 4) ||
-      W(1, &gf3gd.iyaxis, 4) ||
-      W(3, gf3gd.swpars, 4) ||
-      W(1, &gf3gd.infixrw, 4) ||
-      W(1, &gf3gd.infixw, 4) ||
-      W(15, colormap, 4) ||
-      W(1, &gf3gd.pkfind, 4) ||
-      W(1, &gf3gd.ifwhm, 4) ||
-      W(1, &gf3gd.isigma, 4) ||
-      W(1, &gf3gd.ipercent, 4) ||
-      W(300, gf3gd.stoc[0], 4) ||
-      W(300, gf3gd.stodc[0], 4) ||
-      W(300, gf3gd.stoa[0], 4) ||
-      W(300, gf3gd.stoda[0], 4) ||
-      W(300, gf3gd.stoe[0], 4) ||
-      W(300, gf3gd.stode[0], 4) ||
-      W(20, gf3gd.isto, 4) ||
-      W(20, gf3gd.namsto, 28) ||
-      W(1, &rlen2, 4)) {
+#define W(a,b,c) { memcpy(buf + rl, b, c*a); rl += c*a; }
+  W(1, head2, 20);
+  W(1, dattim, 20);
+  put_file_rec(file1, buf, rl);
+  rl = 0;
+  W(2, gf3gd.mch, 4);
+  W(35, gf3gd.ppos, 4);
+  W(1, &gf3gd.irelw, 4);
+  W(111, gf3gd.pars, 4);
+  W(111, gf3gd.freepars, 4);
+  W(1, &gf3gd.npars, 4);
+  W(1, &gf3gd.nfp, 4);
+  W(111, gf3gd.errs, 4);
+  W(1, &gf3gd.npks, 4);
+  W(1, &gf3gd.irelpos, 4);
+  W(35, gf3gd.areas, 4);
+  W(35, gf3gd.dareas, 4);
+  W(35, gf3gd.cents, 4);
+  W(35, gf3gd.dcents, 4);
+  W(1, &ready, 4);
+  W(1, &gf3gd.wtmode, 4);
+  W(5, gf3gd.finest, 4);
+  W(3, gf3gd.infix, 4);
+  W(6, gf3gd.gain, 8);
+  W(1, &gf3gd.ical, 4);
+  W(1, &gf3gd.nterms, 4);
+  W(1, &gf3gd.lox, 4);
+  W(1, &gf3gd.numx, 4);
+  W(1, &gf3gd.locnt, 4);
+  W(1, &gf3gd.ncnts, 4);
+  W(1, &gf3gd.iyaxis, 4);
+  W(3, gf3gd.swpars, 4);
+  W(1, &gf3gd.infixrw, 4);
+  W(1, &gf3gd.infixw, 4);
+  W(15, colormap, 4);
+  W(1, &gf3gd.pkfind, 4);
+  W(1, &gf3gd.ifwhm, 4);
+  W(1, &gf3gd.isigma, 4);
+  W(1, &gf3gd.ipercent, 4);
+  W(700, gf3gd.stoc[0], 4);
+  W(700, gf3gd.stodc[0], 4);
+  W(700, gf3gd.stoa[0], 4);
+  W(700, gf3gd.stoda[0], 4);
+  W(700, gf3gd.stoe[0], 4);
+  W(700, gf3gd.stode[0], 4);
+  W(20, gf3gd.isto, 4);
+  W(20, gf3gd.namsto, 28);
+  if (put_file_rec(file1, buf, rl)) {
     file_error("write to", filnam);
     printf("...No dump written!\n");
     fclose(file1);
@@ -2666,7 +2793,7 @@ int eval(float *pars, int ichan, float *fit, int npks, int mode)
   /* calculate the fit using present values of the pars */
 
   float a, h, r, r1, r2, u, u1, u2, u3, u5, u6, u7, u8, w, x, x1, z; 
-  static float y[MAXNUMPKS], y1[MAXNUMPKS], y2[MAXNUMPKS], beta, width;
+  static float y[35], y1[35], y2[35], beta, width;
   static int   i, notail, ix0;
 
   if (mode == -9) {
@@ -2801,7 +2928,7 @@ int find_bg(int loch, int hich, int disp_flag,
     finig();
   }
   return 0;
-} /* find_bg_ */
+} /* find_bg */
 
 /* ======================================================================= */
 int find_bg2(int loch, int hich, float *x1, float *y1, float *x2, float *y2)
@@ -2871,7 +2998,7 @@ int find_bg2(int loch, int hich, float *x1, float *y1, float *x2, float *y2)
   if (*y1 < 1.f) *y1 = 1.f;
   if (*y2 < 1.f) *y2 = 1.f;
   return 0;
-} /* find_bg2_ */
+} /* find_bg2 */
 
 /* ======================================================================= */
 int find_ge_cent(int loch, int hich, int disp_flag,
@@ -2881,8 +3008,6 @@ int find_ge_cent(int loch, int hich, int disp_flag,
   float x, y, x1, y1, x2, y2, sx2y, ymax, ymid, dcsum, sigma;
   float dc, bg, oldcen, xm, flo, fhi, xhi, yhi, xlo, ylo, sxy, r1;
   int   maxw2, i, iteration, nx, ny, hi, lo;
-
-  extern int matinv(double *, int, int);
 
   /* integrate peak over Cent +/- Factor*FWHM */
   lo = loch;
@@ -2992,7 +3117,7 @@ int find_ge_cent(int loch, int hich, int disp_flag,
     fhi = factor * *fwhm + *cent - (float) hi;
   }
   return 0;
-} /* find_ge_cent_ */
+} /* find_ge_cent */
 
 /* ======================================================================= */
 int findpks(int npixy)
@@ -3040,10 +3165,9 @@ int fitter(int maxits)
   /* this subroutine is a modified version of 'CURFIT', in Bevington
      see page 237 */
 
-  double alpha[3*MAXNUMPKS+6][3*MAXNUMPKS+6], array[3*MAXNUMPKS+6][3*MAXNUMPKS+6], ddat;
-  float  diff, beta[3*MAXNUMPKS+6], b[3*MAXNUMPKS+6], delta[3*MAXNUMPKS+6], fixed[3*MAXNUMPKS+6], ers[3*MAXNUMPKS+6];
-  float  chisq=0.0f, chisq1, flamda, dat, fit, r1;
-  int    i, j, k, l, m, conv = 0, nits, test, nipos, nextp[3*MAXNUMPKS+6];
+  double alpha[111][111], array[111][111], ddat, beta[111], delta[111], ers[111], flamda;
+  float  b[111], fixed[111], diff, chisq=0.0f, chisq1, dat, fit, r1;
+  int    i, j, k, l, m, conv = 0, nits, test, nipos, nextp[111];
   int    ndf, ihi, ilo, niw, rpfixed, rwfixed, mip=0, nip=0, miw=0, nip1=0;
   char   dattim[20];
   static char wtc[3][16] = {"fit.","data.","sp.         "};
@@ -3118,7 +3242,7 @@ int fitter(int maxits)
     goto QUIT;
   }
   /* initialise for fitting */
-  flamda = .001f;
+  flamda = 0.001;
   nits = 0;
   test = 0;
   derivs[0] = 1.f;
@@ -3181,15 +3305,15 @@ int fitter(int maxits)
       goto QUIT;
     }
   }
-  array[0][0] = flamda + 1.f;
+  array[0][0] = flamda + 1.0;
   for (j = 1; j < nip; ++j) {
     for (k = 0; k < j; ++k) {
       array[k][j] = alpha[k][j] / sqrt(alpha[j][j] * alpha[k][k]);
       array[j][k] = array[k][j];
     }
-    array[j][j] = flamda + 1.f;
+    array[j][j] = flamda + 1.0;
   }
-  matinv(array[0], nip, 3*MAXNUMPKS+6);
+  matinv(array[0], nip, 111);
   if (!test) {
     for (j = 0; j < nip; ++j) {
       delta[j] = 0.f;
@@ -3233,8 +3357,8 @@ int fitter(int maxits)
       chisq += diff * diff / dat;
     }
     chisq /= (float) ndf;
-    if (chisq > chisq1 && flamda < 2.f) {
-      flamda *= 10.f;
+    if (chisq > chisq1 && flamda < 2.0) {
+      flamda *= 10.0;
       goto INVERT_MATRIX;
     }
   }
@@ -3243,19 +3367,34 @@ int fitter(int maxits)
   conv = 1;
   for (j = 0; j < nip; ++j) {
     if (array[j][j] < 0.) array[j][j] = 0.;
-    ers[j] = sqrt(array[j][j] / alpha[j][j]) * sqrt(flamda + 1.f);
+    ers[j] = sqrt(array[j][j] / alpha[j][j]) * sqrt(flamda + 1.0);
     if ((r1 = delta[j], fabs(r1)) >= ers[j] / 100.f) conv = 0;
   }
+
+  /* evaluate covariances between parameters */
+  for (l = 0; l < gf3gd.npars; ++l) {
+    for (k = 0; k < l; ++k) {
+      gf3gd.covariances[k][l] = gf3gd.covariances[l][k] = 0.f;
+    }
+  }
+  for (l = 0; l < nip; ++l) {
+    j = nextp[l];
+    for (k = 0; k < l; ++k) {
+      gf3gd.covariances[j][nextp[k]] = gf3gd.covariances[nextp[k]][j] =
+	array[k][l] / sqrt(alpha[k][k] * alpha[l][l]);
+    }
+  }
+
   if (!test && !gotsignal) {
     for (j = 0; j < gf3gd.npars; ++j) {
       gf3gd.pars[j] = b[j];
     }
-    flamda /= 10.f;
+    flamda /= 10.0;
     ++nits;
     if (!conv && nits < maxits) goto NEXT_ITERATION;
     /* re-do matrix inversion with FLAMDA=0
        to calculate errors */
-    flamda = 0.f;
+    flamda = 0.0;
     test = 1;
     goto INVERT_MATRIX;
   }
@@ -3272,18 +3411,37 @@ int fitter(int maxits)
   for (l = 0; l < nip; ++l) {
     gf3gd.errs[nextp[l]] = ers[l];
   }
+  /* deal with errs and covariances in case where relative widths are fixed */
   if (rwfixed) {
     for (j = 7; j <= miw; j += 3) {
       gf3gd.freepars[j] = fixed[j];
       gf3gd.errs[j] = fixed[j] * ers[nip1 - 1];
+      for (k = 0; k < nip; ++k) {
+	gf3gd.covariances[nextp[k]][j] = gf3gd.covariances[j][nextp[k]] =
+	  fixed[j] * array[k][nip1 - 1] / sqrt(alpha[k][k] * alpha[nip1 - 1][nip1 - 1]);
+      }
     }
   }
+  /* deal with errs and covariances in case where relative positions are fixed */
   if (rpfixed) {
     for (j = 6; j <= mip; j += 3) {
       gf3gd.freepars[j] = fixed[j];
       gf3gd.errs[j] = fixed[j] * ers[nip - 1];
+      for (k = 0; k < nip; ++k) {
+	gf3gd.covariances[nextp[k]][j] = gf3gd.covariances[j][nextp[k]] =
+	  fixed[j] * array[k][nip - 1] / sqrt(alpha[k][k] * alpha[nip - 1][nip - 1]);
+      }
     }
   }
+  /* deal with special case where both relative widths and positions are fixed */
+  if (rwfixed && rpfixed) {
+    for (j = 6; j <= mip; j += 3) {
+      gf3gd.covariances[j+1][j] = gf3gd.covariances[j][j+1] =
+	fixed[j] * fixed[j+1] * array[nip - 1][nip1 - 1] /
+	sqrt(alpha[nip - 1][nip - 1] * alpha[nip1 - 1][nip1 - 1]);
+    }
+  }
+
   datetime(dattim);
   printf(" File %s  Spectrum %.8s  %.18s\n"
 	 " Fitted chs %d to %d, %d peaks\n"
@@ -3337,16 +3495,12 @@ int fix_para(int param, int fix_flag)
     if (param <= 0) {
       /* no input or negative number so */
       return 0;
-    } else if (param == 101) {
+    } else if (param == 1001) {
       gf3gd.irelpos = 0;
       printf("Relative peak positions fixed.\n");
-    } else if (param == 102) {
+    } else if (param == 1002) {
       gf3gd.irelw = 0;
       printf("Relative widths fixed.\n");
-      /*mc*/
-    } else if (param == 201) {
-      printf("Fixing all widths -- NOT YET IMPLEMENTED\n");
-      /*mc*/
     } else if (param > gf3gd.npars) {
       printf("Parameter number too large, try again.\n");
     } else if (gf3gd.nfp + gf3gd.freepars[param-1] == gf3gd.npars - 1) {
@@ -3382,10 +3536,10 @@ int fix_para(int param, int fix_flag)
   } else {
     /* free parameter */
     if (param > 0) {
-      if (param == 101) {
+      if (param == 1001) {
 	gf3gd.irelpos = 1;
 	printf("Relative peak positions free to vary.\n");
-      } else if (param == 102) {
+      } else if (param == 1002) {
 	gf3gd.irelw = 1;
 	printf("Relative widths free to vary.\n");
       } else if (param > gf3gd.npars) {
@@ -3397,7 +3551,7 @@ int fix_para(int param, int fix_flag)
     }
   }
   return 0;
-} /* fix_para_ */
+} /* fix_para */
 
 /* ======================================================================= */
 int fixorfree(char *command, int nc)
@@ -3407,13 +3561,18 @@ int fixorfree(char *command, int nc)
      command = FT  FX  FR */
 
   int i, lo, fix, param, j1, j2;
-  char fixtag[53][4], ans[80];
-  static char parc[53][4] = {
+  char fixtag[113][4], ans[80];
+  static char parc[113][4] = {
     " A "," B "," C "," R ","BTA","STP","P1 ","W1 ","H1 ","P2 ","W2 ","H2 ",
     "P3 ","W3 ","H3 ","P4 ","W4 ","H4 ","P5 ","W5 ","H5 ","P6 ","W6 ","H6 ",
     "P7 ","W7 ","H7 ","P8 ","W8 ","H8 ","P9 ","W9 ","H9 ","PA ","WA ","HA ",
     "PB ","WB ","HB ","PC ","WC ","HC ","PD ","WD ","HD ","PE ","WE ","HE ",
-    "PF ","WF ","HF ","RW ","RP "};
+    "PF ","WF ","HF ","PG ","WG ","HG ","PH ","WH ","HH ","PI ","WI ","HI ",
+    "PJ ","WJ ","HJ ","PK ","WK ","HK ","PL ","WL ","HL ","PM ","WM ","HM ",
+    "PN ","WN ","HN ","PO ","WO ","HO ","PP ","WP ","HP ","PQ ","WQ ","HQ ",
+    "PR ","WR ","HR ","PS ","WS ","HS ","PT ","WT ","HT ","PU ","WU ","HU ",
+    "PV ","WV ","HV ","PW ","WW ","HW ","PX ","WX ","HX ","PY ","WY ","HY ",
+    "PZ ","WZ ","HZ ","RW ","RP "};
 
   if (!strncmp(command, "FT", 2)) {
     /* asking for fixed parameter(s) to set up a fit */
@@ -3447,32 +3606,32 @@ int fixorfree(char *command, int nc)
       fixtag[i][3] = '\0';
     }
   }
-  strcpy(fixtag[51], "   ");
-  if (!gf3gd.irelw) strcpy(fixtag[51], "  *");
-  strcpy(fixtag[52], "   ");
-  if (!gf3gd.irelpos) strcpy(fixtag[52], "  *");
+  strcpy(fixtag[111], "   ");
+  if (!gf3gd.irelw) strcpy(fixtag[111], "  *");
+  strcpy(fixtag[112], "   ");
+  if (!gf3gd.irelpos) strcpy(fixtag[112], "  *");
 
   lo = 0;
-  if (gf3gd.npars > 26) {
-    for (i = lo; i < 26; ++i) {
+  while (gf3gd.npars > lo + 24) {
+    for (i = lo; i < lo + 24; ++i) {
       printf(" %s", fixtag[i]);
     }
     printf("\n ");
-    for (i = lo; i < 26; ++i) {
+    for (i = lo; i < lo + 24; ++i) {
       printf(" %s", parc[i]);
     }
-    lo = 26;
+    printf("\n");
+    lo += 24;
   }
-  printf("\n");
   for (i = lo; i < gf3gd.npars; ++i) {
     printf(" %s", fixtag[i]);
   }
-  printf(" %s %s", fixtag[51], fixtag[52]);
+  printf(" %s %s", fixtag[111], fixtag[112]);
   printf("\n ");
   for (i = lo; i < gf3gd.npars; ++i) {
     printf(" %s", parc[i]);
   }
-  printf(" %s %s", parc[51], parc[52]);
+  printf(" %s %s", parc[111], parc[112]);
 
   if (fix) {
     printf("\nParameters to fix =? (one per line, rtn to end)\n");
@@ -3544,7 +3703,7 @@ int getsp(char *filnam, int nc)
   /* ask for spectrum file name and read spectrum from disk */
   strncpy(filnam, "  ", 2);
   if (nc <= 2 &&
-      !cask("Spectrum file or ID = ?", filnam, 80)) return 0;
+      !cask("Spectrum file or ID = ?", filnam, 80)) return 1;
   while (readsp(filnam, gf3gd.spec, gf3gd.namesp, &numch, 16384)) {
     if (!cask("Spectrum file or ID = ?", filnam, 80)) return 1;
   }
@@ -3562,15 +3721,16 @@ int gfexec(char *ans, int nc)
 
   float sens, x, y, x1, x2, e1, e2, save[16384];
   float fj1, fj2, oldch1, oldch2, newch1, newch2;
-  int   mode, imap, nspx, nspy, i, j, k, numch, isphi, isplo, j1, j2;
-  int   in, lo, in2, hi, nnx, nny, numspec, idata = 0;
+  int   mode, imap, nspx, nspy, i, j, k, numch, j1, j2;
+  int   in, lo, in2, hi, nnx, nny, numspec, idata = 0, junk;
   char  q[256], cmd[80];
-  static int ssnum = 0, maxspec = 0, last_snum = -1;
+  static int isplo = 1, isphi = 2, ssnum = 0, maxspec = 0, last_snum = -1;
   static int auto_disp_max = 0, auto_disp_num = 0; 
 
   /* convert lower case to upper case characters */
   for (i = 0; i < 2; ++i) {
-    if (ans[i] > 96 && ans[i] < 123) ans[i] -= 32;
+      if(!isupper(ans[i]))
+         ans[i] = toupper(ans[i]);
   }
   idata = 0;
   if (!strncmp(ans, "AC", 2) || !strncmp(ans, "AS", 2) || 
@@ -3782,6 +3942,7 @@ int gfexec(char *ans, int nc)
       }
       /*mc*/
 
+
       goto SHRDSP;
     }
     printf("Bad command: New spectrum not yet displayed...\n");
@@ -3792,11 +3953,11 @@ int gfexec(char *ans, int nc)
     /* get limits etc. and/or do fit */
     if (inin(ans + 2, nc - 2, &idata, &in, &in2)) goto BADCMD;
     if (idata <= 0 && (!ready || gf3gd.mch[1] > gf3gd.maxch)) goto BADCMD;
-    if (idata > 15) goto BADCMD;
+    if (idata > 35) goto BADCMD;
     dofit(idata);
   } else if (!strncmp(ans, "HC", 2)) {
     /* HC; generate hardcopy of graphics screen */
-    hcopy_noninteractive(ans);
+    hcopy();
   } else if (!strncmp(ans, "HE", 2)) {
     gfhelp(ans);
   } else if (!strncmp(ans, "GF3m", 4)) {
@@ -3804,6 +3965,8 @@ int gfexec(char *ans, int nc)
   } else if (!strncmp(ans, "IN", 2)) {
     /* indump parameters,markers,areas,wtmode etc */
     dump(ans, nc, 1);
+  } else if (!strncmp(ans, "JH", 2)) {
+    sumcts_jch();
   } else if (!strncmp(ans, "LIN", 3) ||
 	     !strncmp(ans, "LIn", 3)) {
     gf3gd.iyaxis = -1;
@@ -3814,7 +3977,7 @@ int gfexec(char *ans, int nc)
     printf("Logarithmic Y-axis...\n");
   } else if (!strncmp(ans, "LP", 2)) {
     /* list pars */
-    typeit(1);
+    list_params(1);
   } else if (!strncmp(ans, "LU", 2)) {
     /* LU [fn] ; create look-up table file (fn = file name) */
     lookup(ans, nc);
@@ -3825,8 +3988,8 @@ int gfexec(char *ans, int nc)
   } else if (!strncmp(ans, "MD", 2)) {
     /* shift display using cursor */
     if (gf3gd.disp) {
-        if(inin(ans + 2, nc - 2, &idata, &in, &in2)) goto BADCMD;
-        if(idata==0) {
+      if(inin(ans + 2, nc - 2, &idata, &in, &in2)) goto BADCMD;
+      if(idata==0){
       printf("    Upper channel limit = ?\n");
       retic(&x, &y, ans);
 
@@ -3836,16 +3999,16 @@ int gfexec(char *ans, int nc)
       /*mc*/
 
       gf3gd.lox = x - gf3gd.numx;
-      if(gf3gd.lox<0) gf3gd.lox = 0;
-        } else {
+      if (gf3gd.lox < 0) gf3gd.lox = 0;
+      } else{
       /*mc*/
       gf3gd.oldlox = gf3gd.lox;
       gf3gd.oldnumx = gf3gd.numx;
       /*mc*/
 
       gf3gd.lox = gf3gd.lox - fabs(idata);
-      if(gf3gd.lox<0) gf3gd.lox = 0;
-        }
+      if (gf3gd.lox < 0) gf3gd.lox = 0;
+      }
       goto SHRDSP;
     }
     printf("Bad command: New spectrum not yet displayed...\n");
@@ -3855,25 +4018,23 @@ int gfexec(char *ans, int nc)
   } else if (!strncmp(ans, "MU", 2)) {
     /* shift display using cursor */
     if (gf3gd.disp) {
-      if(inin(ans+2, nc-2, &idata, &in, &in2)) goto BADCMD;
-      if(idata == 0){
-          printf("    Lower channel limit = ?\n");
-          retic(&x, &y, ans);
+        if(inin(ans + 2, nc - 2, &idata, &in, &in2)) goto BADCMD;
+        if(idata==0) {
+      printf("    Lower channel limit = ?\n");
+     retic(&x, &y, ans);
 
           /*mc*/
           gf3gd.oldlox = gf3gd.lox;
           gf3gd.oldnumx = gf3gd.numx;
           /*mc*/
-
-          gf3gd.lox = x;
-      }else{
+      gf3gd.lox = x;
+        } else {
           /*mc*/
           gf3gd.oldlox = gf3gd.lox;
           gf3gd.oldnumx = gf3gd.numx;
           /*mc*/
-          gf3gd.lox = gf3gd.lox+fabs(idata);
-      }
-     
+            gf3gd.lox = gf3gd.lox+fabs(idata);
+        }
       goto SHRDSP;
     }
     printf("Bad command: New spectrum not yet displayed...\n");
@@ -3902,7 +4063,8 @@ int gfexec(char *ans, int nc)
       gf3gd.ncnts = idata;
     }
   } else if (!strncmp(ans, "OS", 2)) {
-    if (inin(ans + 2, nc - 2, &isplo, &isphi, &in2)) goto BADCMD;
+    if (nc > 2 &&
+	inin(ans + 2, nc - 2, &isplo, &isphi, &in2)) goto BADCMD;
     if (!in2) erase();
     j = colormap[1];
     for (i = isplo; i <= isphi; ++i) {
@@ -3934,7 +4096,7 @@ int gfexec(char *ans, int nc)
     gf3gd.pkfind = 1;
     gf3gd.ifwhm = idata;
     if (in != 0) gf3gd.isigma = in;
-    if (in2 != 0) gf3gd.ipercent = in2;
+    if (in2 >= 0) gf3gd.ipercent = in2;
     printf(" Peak find activated; FWHM, SIGMA, %% = %d %d %d\n",
 	   gf3gd.ifwhm, gf3gd.isigma, gf3gd.ipercent);
   } else if (!strncmp(ans, "PK", 2)) {
@@ -4002,12 +4164,15 @@ int gfexec(char *ans, int nc)
       sprintf(cmd, "DS %i %i", auto_disp_num, auto_disp_max);
       gfexec(cmd, strlen(cmd));
     }
+  } else if (!strncmp(ans, "SH", 2)) {
+    if (nc < 3 && !ask(ans+2, 78, "Shell command = ?")) return 0;
+    comfil(ans, nc);
   } else if (!strncmp(ans, "SL", 2)) {
     /* SL [fn] ; create slice input file  (fn = file name) */
     slice(ans, nc);
   } else if (!strncmp(ans, "SP", 2) ||
-          !strncmp(ans, "S+", 2) ||
-          !strncmp(ans, "S-", 2)) {
+	     !strncmp(ans, "S+", 2) ||
+	     !strncmp(ans, "S-", 2)) {
     if (!strncmp(ans, "S+", 2)) {
       sprintf(ans, "SP %d", last_snum + 1);
       nc = strlen(ans);
@@ -4040,7 +4205,8 @@ int gfexec(char *ans, int nc)
       weight(3);
     }
   } else if (!strncmp(ans, "SS", 2)) {
-    if (inin(ans + 2, nc - 2, &isplo, &isphi, &j)) goto BADCMD;
+    if (nc > 2 &&
+	inin(ans + 2, nc - 2, &isplo, &isphi, &j)) goto BADCMD;
     ssnum = isphi - isplo + 1;
     if (ssnum < 2) goto BADCMD;
     erase();
@@ -4057,6 +4223,7 @@ int gfexec(char *ans, int nc)
 	nny = 1;
       }
     }
+    last_snum = i - 1;
     gf3gd.disp = 0;
   } else if (!strncmp(ans, "ST", 2)) {
     /* ST ; stop and exit */
@@ -4074,8 +4241,12 @@ int gfexec(char *ans, int nc)
       while (1) {
 	nc = cask("Type P/D/S to Print/Delete/Save log file ?", ans, 1);
 	if (nc == 0 || *ans == 'D' || *ans == 'd') {
+#ifdef VMS
+	  sprintf(q, "delete/noconfirm/nolog %s;0", prfilnam);
+#else
 	  sprintf(q, "rm -f %s", prfilnam);
-	  system(q);
+#endif
+	  if (system(q));
 	} else if (*ans == 'P' || *ans == 'p') {
 	  pr_and_del_file(prfilnam);
 	} else if (*ans != 'S' && *ans != 's') {
@@ -4372,7 +4543,7 @@ int gfexec(char *ans, int nc)
   erase();
   fflush(scrfilea);
   rewind(scrfilea);
-#define R(a,b,c) fread(b,c,a,scrfilea)
+#define R(a,b,c) junk = fread(b,c,a,scrfilea)
   for (numspec = 1; numspec <= maxspec; ++numspec) {
     /* read display parameters and spectra back from scratch file */
     R(15, colormap, 4);
@@ -4391,7 +4562,7 @@ int gfexec(char *ans, int nc)
   fflush(scrfilea);
   fflush(scrfileb);
   rewind(scrfileb);
-#define R(a,b,c) fread(b,c,a,scrfileb)
+#define R(a,b,c) junk = fread(b,c,a,scrfileb)
   R(15, colormap, 4);
   R(1, &gf3gd.locnt, 4);
   R(1, &gf3gd.ncnts, 4);
@@ -4406,34 +4577,57 @@ int gfexec(char *ans, int nc)
 } /* gfexec */
 
 /* ======================================================================= */
-int gffin(int mode)
+int gffin(void)
 {
-  /* mode = 1: do not display fit */
-
-  float a, d, r, y, r1, eb, eh, er, ew, bet;
-  int   i, ic;
+  float d, r, y, r1, eb, eh, er, ew, beta, w, h;
+  float dadr, dadb, dadw, dadh, dcdb, dcdr;
+  int   i, iw;
 
   /* calc. areas, centroids and errors */
-  r = gf3gd.pars[3] / 50.f;
-  r1 = 1.f - r * .5f;
-  bet = gf3gd.pars[4];
-  for (i = 1; i <= gf3gd.npks; ++i) {
-    ic = i*3 + 4;
-    y = gf3gd.pars[ic] / (bet * 3.33021838f);
-    d = exp(-y * y) / erfc(y);
-    a = r * bet * d + gf3gd.pars[ic] * 1.06446705f * r1;
-    gf3gd.areas[i-1] = a * gf3gd.pars[ic + 1];
-    eh = a * gf3gd.errs[ic + 1];
-    er = (bet * 2.f * d - gf3gd.pars[ic] * 1.06446705f) * gf3gd.errs[3] / 100.f;
-    eb = r * d * (y * 2.f * y + 1.f - d * 1.12837917f * y) * gf3gd.errs[4];
-    ew = (r1 * 1.06446705f + r * .600561216f * d *
-	  (d / 1.77245385f - y)) * gf3gd.errs[ic];
-    gf3gd.dareas[i-1] = sqrt(eh * eh + gf3gd.pars[ic+1] * 
-			      gf3gd.pars[ic+1] * (er * er + eb * eb + ew * ew));
-    gf3gd.cents[i-1] = gf3gd.pars[ic-1] - r * bet * d * bet / a;
+  r = gf3gd.pars[3] / 100.f;
+  r1 = 1.0f - r;
+  beta = gf3gd.pars[4];
+  for (i = 0; i < gf3gd.npks; ++i) {
+    iw = i*3 + 7;
+    w  = gf3gd.pars[iw];
+    h  = gf3gd.pars[iw+1];
+
+    y = w / (beta * 3.33021838f);
+    if (y > 4.0f) {
+      d = 0.0f;
+    } else {
+      d = exp(-y*y) / erfc(y);
+    }
+    gf3gd.areas[i] = h * (r * 2.0f * beta * d  +  r1 * w * 1.06446705f);
+    dadh =                r * 2.0f * beta * d  +  r1 * w * 1.06446705f;
+    dadr =   0.01f * h * (    2.0f * beta * d  -       w * 1.06446705f);
+    dadb = h * r * 2.0f * d * (1.0f + 2.0f * y*y - d * 1.12837917f * y);
+    dadw = h * (r * 2.0f * 0.600561216f * d * (d / 1.77245385f - y) + r1 * 1.06446705f);
+    gf3gd.areas[i] = h * dadh;
+    er = gf3gd.errs[3]    * dadr;
+    eb = gf3gd.errs[4]    * dadb;
+    ew = gf3gd.errs[iw]   * dadw;
+    eh = gf3gd.errs[iw+1] * dadh;
+ 
+    gf3gd.dareas[i] = sqrt(eh*eh + er*er + eb*eb + ew*ew + 2.0f * (
+	 gf3gd.covariances[3][4]     * dadr*dadb +
+	 gf3gd.covariances[3][iw]    * dadr*dadw +
+	 gf3gd.covariances[3][iw+1]  * dadr*dadh +
+	 gf3gd.covariances[4][iw]    * dadb*dadw +
+	 gf3gd.covariances[4][iw+1]  * dadb*dadh +
+	 gf3gd.covariances[iw][iw+1] * dadw*dadh));
+    dcdr =  - 0.02f * beta*beta * d / dadh;
+    dcdb =  - r * 2.0f * beta * d * (2.0f + 2.0f * y*y - d * 1.12837917f * y) / dadh;
+    gf3gd.cents[i]  = gf3gd.pars[iw-1] - beta * (r * 2.0f * beta * d / dadh);
+    eb = gf3gd.errs[4] * dcdb;
+    er = gf3gd.errs[3] * dcdr;
+    gf3gd.dcents[i] = sqrt(gf3gd.errs[iw-1]*gf3gd.errs[iw-1] + er*er + eb*eb + 2.0f * (
+	 gf3gd.covariances[3][4]    * dcdr*dcdb +
+	 gf3gd.covariances[3][iw-1] * dcdr +
+	 gf3gd.covariances[4][iw-1] * dcdb));
   }
   if (gf3gd.disp) dspfit();
-  typeit(2);
+  list_params(2);
   return 0;
 } /* gffin */
 
@@ -4442,7 +4636,7 @@ int gfhelp(char *ans)
 {
   /* on-line help */
 
-  int  i, j, ic, nc, ilu = 0;
+  int  i, j, nc, ilu = 0;
   char line[120], fullname[200];
   FILE *file;
   static char outfn[80] = "gf3help.txt";
@@ -4450,14 +4644,13 @@ int gfhelp(char *ans)
   /* convert ans to upper case characters */
   file = NULL;
   for (i = 0; i < 80; ++i) {
-    ic = ans[i];
-    if (ic >= 97 && ic <= 122) ans[i] = (char) (ic - 32);
+    ans[i] = toupper(ans[i]);
   }
   if (!strncmp(ans, "HE/P", 4) || !strncmp(ans, "HELP/P", 6)) {
     /* print help */
     ilu = 3;
     /* open output (print) file */
-    file = open_pr_file(outfn);
+    if (!(file = open_new_file(outfn, 0))) return 1;
     strcpy(ans, "HE SUM");
   }
 
@@ -4542,7 +4735,7 @@ int gfhelp(char *ans)
     }
     if (nc == 0) break;
     for (i = 0; i < nc; ++i) {
-      if (ans[i] >= 97 && ans[i] <= 122) ans[i] -= 32;
+      ans[i] = toupper(ans[i]);
     }
     rewind(file1);
   }
@@ -4567,32 +4760,26 @@ int gfinit(int argc, char **argv)
     /*mc original */
     /*
   static char *s1 =
-    "\n\nWelcome to gf3, version 0.0\n\n"
+    "\n\nWelcome to gf3, version 1.2\n\n"
+    "gf3 will now fit up to 35 peaks.\n"
     "Check out the new commands:\n"
-    "    CA, CA3, CA4 - autoCAlibrate one or many spectra quickly and easily\n"
-    "    SS, OS       - display many spectra simultaneously\n"
-    "                 - intended for multi-spectrum files\n"
-    "    PK           - quick and quite accurate peak energies and areas\n"
-    "    AF [sensitivity] - very easy and robust AutoFit routine\n"
-    "    SD [MaxNumofSp]  - sets up automatic spectrum display for whenever\n"
-    "                       you read in a new spectrum\n"
-    "    DL lo_ch hi_ch   - alternative way of specifying display limits\n"
-    "    LIN, LOG         - alternative way of specifying y-axis mode\n\n"
+    "    S+, S-    - read next/previous spectrum from multi-spectrum file\n\n"
     "<Return> or 0 as an answer to any (Y/N) question is equivalent to N\n"
     "            1 as an answer to any (Y/N) question is equivalent to Y\n"
     " The default extension for all spectrum file names is .spe\n"
     " Type HE   for a list of available commands,\n"
     "      HE/P to print a list of available commands.\n\n"
-    " D.C. Radford\n"
+    " D.C. Radford\n";
     */
 
   static char *s2 =
+    "\n\nWelcome to gf3, version 0.0\n\n"
     " To avoid answering these setup questions each time you enter gf3\n"
     "   create a file gfinit.dat and/or gfinit.cmd in your current\n"
     "   or home directory.  Type HELP GFINIT for details.\n\n"
     " Press any key to continue...";
   static char *s3 =
-    "\nThis program fits portions of spectra with up to fifteen peaks\n"
+    "\nThis program fits portions of spectra with up to thirty-five peaks\n"
     "       on a quadratic background.\n"
     "The fitted parameters are :\n"
     "  A, B and C :  Background = A + B*X + C*X*X\n"
@@ -4614,12 +4801,31 @@ int gfinit(int argc, char **argv)
 
   if (first) {
     first = 0;
+
+    /* parse input parameters */
+    if (argc > 1) input_file_name = argv[1];
+    if (!strcmp(input_file_name, "-h") || !strcmp(input_file_name, "--help")) {
+      printf("Usage: gf3 [-l log_file_name] [input_spectrum_file_name]\n"
+	     "  Type HE inside gf3 for a list of gf3 commands.\n");
+      exit(0);
+    } else if (!strcmp(input_file_name, "-l")) {
+      if (argc > 2) strcpy(prfilnam, argv[2]);
+      setext(prfilnam, ".log", 80);
+      prfile = open_new_file(prfilnam, 0);
+      input_file_name = "";
+      if (argc > 3) input_file_name = argv[3];
+    } else if (argc > 2) {
+      if (argc > 3) strcpy(prfilnam, argv[3]);
+      setext(prfilnam, ".log", 80);
+      prfile = open_new_file(prfilnam, 0);
+    }
+
     set_xwg("gf2_std_");
     initg(&nx, &ny);
     finig();
 
     gf3gd.disp = 0;
-     
+    gf3gd.numx = 0;
     /*mc set default expansion width*/
     /* gf3gd.numx = 0;*/
     gf3gd.numx = 150;
@@ -4658,20 +4864,6 @@ int gfinit(int argc, char **argv)
       exit(-1);
     }
 
-    /* parse input parameters */
-    if (argc > 1) input_file_name = argv[1];
-    if (!strcmp(input_file_name, "-l")) {
-      if (argc > 2) strcpy(prfilnam, argv[2]);
-      setext(prfilnam, ".log", 80);
-      prfile = open_pr_file(prfilnam);
-      input_file_name = "";
-      if (argc > 3) input_file_name = argv[3];
-    } else if (argc > 2) {
-      if (argc > 3) strcpy(prfilnam, argv[3]);
-      setext(prfilnam, ".log", 80);
-      prfile = open_pr_file(prfilnam);
-    }
-
     /* mc */
     /*printf("%s", s1); */
     /* display header */
@@ -4692,26 +4884,22 @@ int gfinit(int argc, char **argv)
     set_matrix_dim("4096 4096 4 0 0");
     /*mc*/
     
-    /* try to open and read file gfinit.dat */
-    if (file1 = fopen("gfinit.dat", "r")) 
-      {
-        /* try in current directory */
-        strcpy (fullname, "gfinit.dat");
+
+    /* try to open and read file gfinit.dat in current directory */
+    if (!(file1 = fopen("gfinit.dat", "r")) &&
+	!(file1 = fopen(".gfinit.dat", "r"))) {
+      /* try in the home directory */
+      get_directory("HOME", fullname, 100);
+      strcat(fullname, "gfinit.dat");
+      if (!(file1 = fopen(fullname, "r"))) {
+	get_directory("HOME", fullname, 100);
+	strcat(fullname, ".gfinit.dat");
+	if (!(file1 = fopen(fullname, "r"))) no_init_file = 1;
       }
-    else 
-      {
-        /* try in the home directory */
-        get_directory("HOME", fullname, 100);
-        strcat(fullname, "gfinit.dat");
-        if (!(file1 = fopen(fullname, "r"))) no_init_file = 1;
-      }
+    }
 
     if (!no_init_file) {
       /* read gfinit.dat file */
-      /*mc*/
-      printf ("Reading fit parameter file: %s\n", fullname);
-      /*mc*/
-
       if (fgets(l, 120, file1) &&
 	  5 == sscanf(l, "%f,%f,%f,%f,%f", &gf3gd.finest[0],
 		      &gf3gd.finest[1], &gf3gd.finest[2],
@@ -4734,26 +4922,19 @@ int gfinit(int argc, char **argv)
     }
 
     /* now check for a gfinit.cmd file */
-    /* try to open and read file gfinit.dat */
-    if (file1 = fopen("gfinit.cmd", "r")) 
-      {
-        /* try in current directory */
-        strcpy (fullname, "gfinit.cmd");
+    if (!(file1 = fopen("gfinit.cmd", "r")) &&
+	!(file1 = fopen(".gfinit.cmd", "r"))) {
+      /* try in the home directory */
+      get_directory("HOME", fullname, 100);
+      strcat(fullname, "gfinit.cmd");
+      if (!(file1 = fopen(fullname, "r"))) {
+	get_directory("HOME", fullname, 100);
+	strcat(fullname, ".gfinit.cmd");
+	if (!(file1 = fopen(fullname, "r"))) no_cmd_file = 1;
+	no_cmd_file = 1;
       }
-    else 
-      {
-        /* try in the home directory */
-        get_directory("HOME", fullname, 100);
-        strcat(fullname, "gfinit.cmd");
-        if (!(file1 = fopen(fullname, "r"))) no_cmd_file = 1;
-      }
-
+    }
     if (!no_cmd_file) {
-
-      /*mc*/
-      printf ("Reading startup command file: %s\n", fullname);
-      /*mc*/
-
       /* execute gfinit.cmd file */
       fclose(file1);
       /* mc -- printf("%s", s1); */
@@ -4793,7 +4974,7 @@ int gfinit(int argc, char **argv)
 
   while ((k = cask("Initial estimate for BETA is taken as"
 		   " BETA = C + D*X  (X = ch. no.)\n"
-		   "Enter C,D (rtn for default: BETA = st. width/2)",
+		   "  Enter C,D (rtn for default: BETA = st. width/2)",
 		   ans, 80)) &&
 	 ffin(ans, k, &gf3gd.finest[2], &gf3gd.finest[3], &rj2));
   if (k == 0) {
@@ -4804,7 +4985,7 @@ int gfinit(int argc, char **argv)
     caskyn("Do you want always to fix BETA at this value? (Y/N)");
 
   while ((k = cask("Initial estimate for STEP is taken as STEP = E\n"
-		   "Enter E (rtn for default: STEP = 0.25)", ans, 80)) &&
+		   "  Enter E (rtn for default: STEP = 0.25)", ans, 80)) &&
 	 ffin(ans, k, &gf3gd.finest[4], &rj1, &rj2));
   if (k == 0) gf3gd.finest[4] = .25f;
   gf3gd.infix[2] =  1 -
@@ -4812,9 +4993,7 @@ int gfinit(int argc, char **argv)
   startwid(ans, 2);
 
  DONE:
-  /* mc -- an annoyance if you don't want to start by showing a spectrum,
-     and since every other time you want to read a spectrum you are in the 
-     habit of prefacing it with "sp" */
+  //printf("%s", s1);
   /* ask for spectrum file name and read spectrum from disk */
   /*
   strcpy(ans+2, input_file_name);
@@ -4822,7 +5001,6 @@ int gfinit(int argc, char **argv)
   strcpy(ans, "DS");
   gfexec(ans, 2);
   */
-
 
   return 0;
 } /* gfinit */
@@ -4864,7 +5042,7 @@ int gfset(void)
   }
 
   /* ask for peak positions */
-  if (gf3gd.npks <= MAXNUMPKS) {
+  if (gf3gd.npks <= 35) {
     printf(" Peak positions? (hit T to type, R to restart\n");
     for (n = 0; n < gf3gd.npks; ++n) {
       while (1) {
@@ -4885,9 +5063,9 @@ int gfset(void)
       }
       dspmkr(n+3);
     }
-  } else {  /* gf3gd.npks > MAXNUMPKS */
+  } else {  /* gf3gd.npks > 35 */
     printf(" Peak positions? (hit X when done, T to type, R to restart)\n");
-    for (n = 0; n < MAXNUMPKS; ++n) {
+    for (n = 0; n < 35; ++n) {
       while (1) {
 	if (gf3gd.disp) {
 	  retic(&x, &y, ans);
@@ -4922,22 +5100,6 @@ int gfset(void)
   parset(-1);
   strcpy(ans, "FX");
   nc = 2;
-
-  /*mc force linear background
-      write(iw,*) 'Fixing quadratic term of background at 0 ',
-     &   '(forcing linear)...'
-      NFP = NFP + IFIXED(3)
-      IFIXED(3) = 0
-      PARS(3) = 0.
-  */
-
-
-  /*  fixpara(3,1); would cause value to be queried for, so instead imitate action of fixpara(3,1) and set value to 0.0*/
-  printf ("*** Setting default C = 0.0 (no quadratic backround)... ***\n");
-  gf3gd.nfp += gf3gd.freepars[3-1];  /* if was free before, have now fixed one more parameter */
-  gf3gd.freepars[3-1] = 0;      
-  gf3gd.pars[3-1] = 0.0;
-
   fixorfree(ans, nc);
   return 0;
 } /* gfset */
@@ -4982,7 +5144,10 @@ int lookup(char *filnam, int nc)
     if (!caskyn(" Create new version? (Y/N)")) goto START;
   }
   /* open NEW output file */
-  winfile = open_new_unf(filnam);
+  if (!(winfile = open_new_file(filnam, 0))) {
+    winmod = 0;
+    return 0;
+  }
   /* ask for dimension of look-up table
      (default = spectrum dimension) */
   gf3gd.nclook = gf3gd.maxch + 1;
@@ -5001,16 +5166,6 @@ int lookup(char *filnam, int nc)
 } /* lookup */
 
 /* ======================================================================= */
-
-/* mc  Note: tried removing
-
-int matread(char *fn, float *sp, char *namesp, int *numch, int idimsp,
-	    int *spmode)
-
-since this function is not called within gf3_subs.c and is duplicated in a library file
-but then SP/C failed to work
-*/
-
 int matread(char *fn, float *sp, char *namesp, int *numch, int idimsp,
 	    int *spmode)
 {
@@ -5022,15 +5177,20 @@ int matread(char *fn, float *sp, char *namesp, int *numch, int idimsp,
      spmode = 2/3 for .mat/.spn files
      file extension must be .mat */
 
-  int i4spn [4096];
-#define i2mat ((short *)i4spn)
+  /* 2000/10/31:  added support for .sec files (like 8192-ch .spn files)
+     spmode = 5 for .sec files */
+
+  int i4spn [8192];
+#define i2mat ((short *) i4spn)
 
   float x, y;
-  int   i4sum[4096], i, j, k, jrecl;
-  int   in3, ilo, ihi, nc, iy;
+  int   i4sum[8192], i, j, k, jrecl;
+  int   in3, ilo, ihi, nc, iy, nch;
   char  ans[80], q[256];
   FILE  *file;
   static char filnam[80];
+
+  *numch = 0;
 
   if (!strncmp(fn+2, "/C", 2) || !strncmp(fn+2, "/c", 2)) {
     if (!gf3gd.disp) {
@@ -5053,6 +5213,8 @@ START:
 	  !strcmp(filnam + j, ".mat") ||
 	  !strcmp(filnam + j, ".SPN") ||
 	  !strcmp(filnam + j, ".spn") ||
+	  !strcmp(filnam + j, ".SEC") ||
+	  !strcmp(filnam + j, ".sec") ||
 	  !strcmp(filnam + j, ".M4B") ||
 	  !strcmp(filnam + j, ".m4b")) {
 	sprintf(q, "Matrix file = ? (default .ext = .mat)\n"
@@ -5065,6 +5227,8 @@ START:
 	    strcmp(filnam + j, ".mat") &&
 	    strcmp(filnam + j, ".SPN") &&
 	    strcmp(filnam + j, ".spn") &&
+	    strcmp(filnam + j, ".SEC") &&
+	    strcmp(filnam + j, ".sec") &&
 	    strcmp(filnam + j, ".M4B") &&
 	    strcmp(filnam + j, ".m4b")) return 1;
       } else {
@@ -5073,6 +5237,8 @@ START:
 	    strcmp(ans + j, ".mat") &&
 	    strcmp(ans + j, ".SPN") &&
 	    strcmp(ans + j, ".spn") &&
+	    strcmp(ans + j, ".SEC") &&
+	    strcmp(ans + j, ".sec") &&
 	    strcmp(ans + j, ".M4B") &&
 	    strcmp(ans + j, ".m4b")) {
 	  goto START;
@@ -5085,9 +5251,9 @@ START:
       }
       *spmode = 3;
       if (!strcmp(filnam + j, ".MAT") ||
-	  !strcmp(filnam + j, ".mat")) {
-	*spmode = 2;
-      }
+	  !strcmp(filnam + j, ".mat")) *spmode = 2;
+      if (!strcmp(filnam + j, ".SEC") ||
+	  !strcmp(filnam + j, ".sec")) *spmode = 5;
     }
   } else {
     /* SP command does not include "/C"
@@ -5117,7 +5283,9 @@ START:
     return 1;
   }
   if (!(file = open_readonly(filnam))) return 1;
-  *numch = 4096;
+  nch = 4096;
+  if (*spmode == 5) nch = 8192;
+  *numch = nch;
   if (*numch > idimsp) {
     *numch = idimsp;
     printf("First %d chs only taken.", idimsp);
@@ -5141,9 +5309,9 @@ START:
     }
   } else {
     /* read matrix rows into i4spn and add into i4sum */
-    fseek(file, ilo*16384, SEEK_SET);
+    fseek(file, ilo*nch*4, SEEK_SET);
     for (iy = ilo; iy <= ihi; ++iy) {
-      if (fread(i4spn, 16384, 1, file) != 1) {
+      if (fread(i4spn, nch*4, 1, file) != 1) {
 	file_error("read", filnam);
 	fclose(file);
 	return 1;
@@ -5171,25 +5339,29 @@ int para2num(char *ans, int *param)
      returns 1 for unrecognized parameter */
   /* called by fixorfree */
 
-  int  i, ic;
+  int  i;
   char tmp_ans[80];
-  static char parc[51][4] = {
+  static char parc[111][4] = {
     "A","B","C","R","BTA","STP","P1","W1","H1","P2","W2","H2",
     "P3","W3","H3","P4","W4","H4","P5","W5","H5","P6","W6","H6",
     "P7","W7","H7","P8","W8","H8","P9","W9","H9","PA","WA","HA",
     "PB","WB","HB","PC","WC","HC","PD","WD","HD","PE","WE","HE",
-    "PF","WF","HF"};
+    "PF","WF","HF","PG","WG","HG","PH","WH","HH","PI","WI","HI",
+    "PJ","WJ","HJ","PK","WK","HK","PL","WL","HL","PM","WM","HM",
+    "PN","WN","HN","PO","WO","HO","PP","WP","HP","PQ","WQ","HQ",
+    "PR","WR","HR","PS","WS","HS","PT","WT","HT","PU","WU","HU",
+    "PV","WV","HV","PW","WW","HW","PX","WX","HX","PY","WY","HY",
+    "PZ","WZ","HZ"};
 
   strncpy(tmp_ans, ans, 80);
   /* remove leading spaces */
   while (*(unsigned char *)tmp_ans == ' ') {
-    strncpy(tmp_ans, tmp_ans + 1, 80);
+    memmove(tmp_ans, tmp_ans + 1, 80);
     tmp_ans[79] = '\0';
   }
   /* convert lower case to upper case characters */
   for (i = 0; i < 4; ++i) {
-    ic = tmp_ans[i];
-    if (ic >= 97 && ic <= 122) tmp_ans[i] = (char) (ic-32);
+    tmp_ans[i] = toupper(tmp_ans[i]);
   }
   for (*param = 1; *param <= gf3gd.npars; ++(*param)) {
     if (!strcmp(tmp_ans, parc[*param-1])) return 0;
@@ -5199,9 +5371,9 @@ int para2num(char *ans, int *param)
   } else if (!strcmp(tmp_ans, "STEP")) {
     *param = 6;
   } else if (!strcmp(tmp_ans, "RP")) {
-    *param = 101;
+    *param = 1001;
   } else if (!strcmp(tmp_ans, "RW")) {
-    *param = 102;
+    *param = 1002;
     /*mc*/
   } else if (!strcmp(tmp_ans, "ALLW")) {
     *param = 201;
@@ -5272,6 +5444,7 @@ int parset(int mode)
   for (i = 0; i < gf3gd.npks; ++i) {
     gf3gd.areas[i] = 0.f;
     gf3gd.dareas[i] = 0.f;
+    gf3gd.cents[i] =0.f;
     j = i*3 + 6;
     if (resetp && gf3gd.freepars[j] == 1) gf3gd.pars[j] = gf3gd.ppos[i];
     if (mode < 0 || (resetw && gf3gd.freepars[j+1] == 1))
@@ -5293,7 +5466,7 @@ int parset(int mode)
 int pfind(float *chanx, float *psize, int loch, int hich,
 	  int ifwhm, float sigma, int maxpk, int *npk)
 {
-  /* modified for gf2: data is float
+  /* modified for gf3: data is float
      peak-finder routine    ornl 5/4/76 jdl.
      ifwhm   = fwhm estimate supplied by calling prog
      sigma   = peak detection threshold (std dev above bkg)
@@ -5589,7 +5762,7 @@ int slice(char *ans, int nc)
     setext(ans, ".win", 80);
   }
   /* open new output file */
-  winfile = open_pr_file(ans);
+  if (!(winfile = open_new_file(ans, 0))) winmod = 0;
   return 0;
 } /* slice */
 
@@ -5599,7 +5772,7 @@ int startwid(char *ans, int nc)
   float sw1, sw2, sw3;
   char  q[512];
 
-  if (nc > 2) strncpy(ans, ans + 2, 78);
+  if (nc > 2) memmove(ans, ans + 2, 78);
   nc -= 2;
 
   while (1) {
@@ -5615,8 +5788,8 @@ int startwid(char *ans, int nc)
     }
     sprintf(q,"Initial estimates for the fitted peak widths are taken as:\n"
 	    "       FWHM = sqrt(F*F + G*G*x + H*H*x*x)  (x = ch.no. /1000)\n"
-	    "  Default values are:  F = %.2f, G = %.2f, H= %.2f\n"
-	    "Enter F,G,H  = ? (rtn for default values)",
+	    "  Default values are:  F = %.2f, G = %.2f, H = %.2f\n"
+	    "  Enter F,G,H  = ? (rtn for default values)",
 	    sqrt(gf3gd.swpars[0]), sqrt(gf3gd.swpars[1] * 1e3f),
 	    sqrt(gf3gd.swpars[2]) * 1e3f);
     if (!(nc = cask(q, ans, 80))) break;
@@ -5633,12 +5806,12 @@ int storac(int in)
  
   int i, j, k, idata, j1, j2;
   char ans[80];
-  static char outfn[80] = "gf2.sto";
+  static char outfn[80] = "gf3.sto";
 
   idata = in;
   while (idata == 0 || idata > 20) {
     k = cask("N = 1-20: store centroids and areas in one of 20 positions\n"
-	     "N = -1:   write stored values to disk file gf2.sto\n"
+	     "N = -1:   write stored values to disk file gf3.sto\n"
 	     " ...N = ?", ans, 80);
     if (k == 0) return 0;
     inin(ans, k, &idata, &j1, &j2);
@@ -5651,12 +5824,12 @@ int storac(int in)
     gf3gd.isto[idata - 1] = gf3gd.npks;
     for (i = 0; i < gf3gd.npks; ++i) {
       gf3gd.stoc [idata-1][i] = gf3gd.cents [i];
-      gf3gd.stodc[idata-1][i] = gf3gd.errs  [i*3 + 6];
+      gf3gd.stodc[idata-1][i] = gf3gd.dcents[i];
       gf3gd.stoa [idata-1][i] = gf3gd.areas [i];
       gf3gd.stoda[idata-1][i] = gf3gd.dareas[i];
       gf3gd.stoe [idata-1][i] = 0.f;
       gf3gd.stode[idata-1][i] = 0.f;
-      energy(gf3gd.cents[i], gf3gd.errs[i*3 + 6], 
+      energy(gf3gd.cents[i], gf3gd.dcents[i], 
 	     &gf3gd.stoe [idata-1][i],
 	     &gf3gd.stode[idata-1][i]);
     }
@@ -5665,17 +5838,18 @@ int storac(int in)
     return 0;
   }
 
-  /* idata < 0: store saved values in file gf2.sto */
+  /* idata < 0: store saved values in file gf3.sto */
   for (j = 0; j < 20; ++j) {
      if (gf3gd.isto[j]) goto STORE;
   }
   return 1; /* no data to save */
 
  STORE:
-  if (!(file2 = fopen(outfn, "a+"))) file2 = open_pr_file(outfn);
+  if (!(file2 = fopen(outfn, "a+"))) file2 = open_new_file(outfn, 0);
+  if (!file2) return 1;
   fprintf(file2, " No.  Centroid +- error      Area +- error  "
 	         "    Energy +- error    Sp.name      Date     Time\n");
-  for (i = 0; i < MAXNUMPKS; ++i) {
+  for (i = 0; i < 35; ++i) {
     for (j = 0; j < 20; ++j) {
       if (gf3gd.isto[j] > i) {
 	fprintf(file2,
@@ -5787,11 +5961,6 @@ int sumcts(int mode, int loch, int hich)
       area += cou;
       cent += cou * (float) (i - loch);
     }
-    
-    /*mc*/
-    printf ("Background selected: y = %.2f + %.2f * (ch - %d)\n", y1, (y2-y1)/(hich-loch), loch);  /*(whereas x=0 intercept is y1*hich-y2*loch)/(hich-loch)*/
-    /*mc*/
-
   } else {
     /* no background to be subtracted */
     for (i = loch; i <= hich; ++i) {
@@ -5801,6 +5970,7 @@ int sumcts(int mode, int loch, int hich)
   }
   if (area == 0.f) {
     printf("  Chs %d to %d    Area = %.0f\n", loch, hich, area);
+    if (repeat) goto REPEAT;
     return 0;
   }
   cent = cent / area + (float) (loch);
@@ -5840,16 +6010,166 @@ int sumcts(int mode, int loch, int hich)
 } /* sumcts */
 
 /* ======================================================================= */
-int typeit(int mode)
+int sumcts_jch(void)
+{
+  float area, area1, area2, cent, x, y, b[111], save[16384];
+  float dc, eg, deg, fnc, cou, cts, sum, r1;
+  int   isav, i, j, isave, j2, nc, lo, hi, loch, hich;
+  int   npks2;
+  char  ans[80], l[120];
+
+  if (!gf3gd.disp) {
+    printf("Bad command: New spectrum not yet displayed...\n");
+    return 1;
+  }
+  printf("Use mouse buttons or any character to enter limits...\n"
+	 "                      ...T to type limits, X to exit.\n");
+
+  while (1) {
+    /* get limits for integration, background */
+    while (1) {
+      if (ans[0] == 'T' || ans[0] == 't') {
+	nc = cask("Limits for integration = ? (rtn to quit)", ans, 80);
+	if (nc == 0) return 0;
+	if (!inin(ans, nc, &loch, &hich, &j2) &&
+	    loch >= 0 && hich > 0 &&
+	    loch <= gf3gd.maxch &&
+	    hich <= gf3gd.maxch) break;
+      } else {
+	retic(&x, &y, ans);
+	if (ans[0] == 'X' || ans[0] == 'x') return 0;
+	if (ans[0] == 'T' || ans[0] == 't') continue;
+	loch = x;
+	retic(&x, &y, ans);
+	if (ans[0] == 'X' || ans[0] == 'x') return 0;
+	if (ans[0] == 'T' || ans[0] == 't') continue;
+	hich = x;
+	break;
+      }
+    }
+
+    if (loch > hich) {
+      isav = hich;
+      hich = loch;
+      loch = isav;
+    }
+
+    isave = gf3gd.mch[0];
+    gf3gd.mch[0] = loch;
+    dspmkr(1);
+    gf3gd.mch[0] = hich;
+    dspmkr(1);
+    gf3gd.mch[0] = isave;
+
+    sum = 0.f;
+    area1 = area2 = 0.f;
+    cent = 0.f;
+    dc = 0.f;
+    fnc = (float) (hich - loch);
+    if (fnc < .5f) fnc = 1.f;
+    /* ----------------------------------------------------- */
+
+    /* figure out what peaks are included in integration region */
+    for (i = 0; i < 6; ++i) {
+      b[i] = 0.f;
+    }
+    b[3] = gf3gd.pars[3];
+    b[4] = gf3gd.pars[4];
+
+    npks2 = 0;
+    for (j = 0; j < gf3gd.npks; j++) {
+      if (gf3gd.pars[3*j+6] > loch && gf3gd.pars[3*j+6] < hich) {
+	for (i = 6; i < 9; ++i) {
+	  b[npks2*3 +i] = gf3gd.pars[j*3 + i];
+	}
+	npks2++;
+      }
+    }
+    if (npks2 < 0) {
+      printf("*** ERROR - no fitted peak included in region!\n");
+      return 1;
+    }
+    printf("  Chs %d to %d;  %d fitted peaks\n", loch, hich, npks2);
+
+    lo = gf3gd.mch[0];
+    hi = gf3gd.mch[1];
+    if (hi < lo) return 1;
+    if (hi < hich || lo > loch) {
+      printf("*** ERROR - background not fitted for all of this region!\n");
+      return 1;
+    }
+
+    /* calculate background */
+    eval(gf3gd.pars, 0, &y, gf3gd.npks, -9);
+    for (i = lo; i <= hi; i++) {
+      eval(gf3gd.pars, i, &y, gf3gd.npks, -1);
+      save[i] = y;
+    }
+
+    /* eval(b, gf3gd.ifixed[3], &y, 1, -9); */
+    eval(b, 0, &y, npks2, -9);
+    for (i = lo; i <= hi; ++i) {
+      if (i < loch || i > hich) {
+	eval(b, i, &cou, npks2, 0);
+	area2 += cou;
+      } else {
+	cou  = gf3gd.spec[i] - save[i];
+	area1 += cou;
+      }
+      cent += cou * (float) (i-loch);
+    }
+    area = area1 + area2;
+
+    if (area <= 0.f) {
+      printf("  Chs %d to %d    Area = %.0f\n", loch, hich, area);
+      continue;
+    }
+
+    cent = cent / area + (float) (loch);
+    for (i = lo; i <= hi; ++i) {
+      if (i < loch || i > hich) {
+	eval(b, i, &cou, npks2, 0);
+	/* r1 = gf3gd.errs[3*ipk+8]/gf3gd.pars[3*ipk+8]; */
+	/* cts = cou * cou * 4.0f * (r1 * r1); */
+ 	cts = cou;
+      } else if (gf3gd.wtmode < 1) {
+	/* weight data with data */
+	cts = gf3gd.spec[i];
+      } else {
+	/* weight data with WTSP */
+	cts = gf3gd.wtsp[i];
+      }
+      if (cts < 1.f) cts = 1.f;
+      sum += cts;
+      r1 = ((float) i - cent) / area;
+      dc += cts * (r1 * r1);
+    }
+    dc = sqrt(dc);
+
+    /* ----------------------------------------------------- */
+
+    /* write results */
+    sprintf(l, "Chs %d to %d,  Area (Int, Tails, Total): %d %d",
+	    loch, hich, (int) area1, (int) area2);
+    wrresult(l, area, sqrt(sum), 0);
+    printf("%s\n", l);
+    strcpy(l, "   Cent:");
+    wrresult(l, cent, dc, 0);
+    if (!energy(cent, dc, &eg, &deg)) {
+      strcat(l, "   Energy:");
+      wrresult(l, eg, deg, 0);
+    }
+    printf("%s\n", l);
+  }
+} /* sumcts_jch */
+
+/* ======================================================================= */
+int list_params(int mode)
 {
   /* print results of fit - parameters etc. */
   float eg, deg;
   int   i, k;
-  char  l[120], *c;
-
-  /*mc*/
-  float width, widtherr;
-  /*mc*/
+  char  l[120];
 
   if (mode == 1) {
     printf(" Mkr chs: limits %5d %5d\n           peaks",
@@ -5886,83 +6206,27 @@ int typeit(int mode)
      if (prfile) fprintf(prfile, "   position      width       height"
 			 "        area          centroid\n");
   } else {
-    /*mc original was      printf("   position      width       height"
-	    "        area          centroid  energy\n");
+     printf("   position      width       height"
+	    "        area          centroid      energy\n");
      if (prfile) fprintf(prfile, "   position      width       height"
-			 "       area          centroid  energy\n");
-    */
-    /*mc*/
-    printf("   position (keV)  width (keV)  centroid (keV)  height (cts)    area (cts)      position (ch)  width (ch)\n");
-    if (prfile) fprintf(prfile, "   position (keV)  width (keV)  centroid (keV)  height (cts)    area (cts)      position (ch)\n");
-    /*mc*/
+			 "        area          centroid      energy\n");
   }
   for (i = 0; i < gf3gd.npks; ++i) {
     k = i*3 + 6;
     *l= '\0';
-
-    /*mc
-cmc Convert all fit results to energies.
-                  gf2 FORTRAN                          gf3 C
-cmc    position is PARS(1+K) +- ERRS(1+K)     pars[k]+-errs[k]
-cmc    width is PARS(2+K) +- ERRS(2+K)        part[k+1]+-errs[k+1]
-cmc       Modification: Treat peak width as a differential of energy.
-cmc    height is PARS(3+K) +- ERRS(3+K)
-cmc    area is IFIX(AREAS(I)) +- IFIX(DAREAS(I))
-cmc    centroid is CENTS(I), where original gf2 shows energy error as same as posn.
-
-old:
-   position      width       height        area          centroid  energy
- 1 766.7386(15)  4.677(3)    551224(477)   2744048(2871) 766.7386  383.3693(8) 2.3383(14)
- 2 774.606(4)    2.782(7)    102395(350)   303231(1306)  774.606   387.3028(19) 1.391(4)
-new:
-   position (keV)  width (keV)  centroid (keV)  height (cts)    area (cts)      position (ch)  width (ch)
-                   20           33              49              65              81             96 
-
-wrresult argument is start insertion pt. of next field - 4, except 0 for last field
-    */
-     /*mc customize display if ical == 1 */
-     if (gf3gd.ical == 0) {
-     /*mc */
-
-      wrresult(l, gf3gd.pars[k], gf3gd.errs[k], 14);       /* position (err) */
-      wrresult(l, gf3gd.pars[k+1], gf3gd.errs[k+1], 26);   /* width (err) */
-      wrresult(l, gf3gd.pars[k+2], gf3gd.errs[k+2], 40);   /* height (err) */
-      c = l + wrresult(l, gf3gd.areas[i], gf3gd.dareas[i], 54);   /* area (err) */
-      wrresult(l, gf3gd.cents[i], gf3gd.errs[k], 0);       /* centroid (posn. err) */
-      /* remove (error) from centroid */
-      c = (strrchr(c,'('));
-      *c = '\0';
-      if (!energy(gf3gd.cents[i], gf3gd.errs[k], &eg, &deg)) {
-	while (c < l + 64) {
-		strcat(c++, " ");
-	}
-	wrresult(l, eg, deg, 0);
-      }
-    } else {
-  
-	/*mc energy units */
-     
-      energy(gf3gd.cents[i], gf3gd.errs[k], &eg, &deg);
-      wrresult(l, eg, deg, 16);       /* position (err) */
-      energy(gf3gd.cents[i], gf3gd.pars[k+1], &eg, &width);
-      energy(gf3gd.cents[i], gf3gd.errs[k+1], &eg, &widtherr);
-      wrresult(l, width, widtherr, 29);
-      energy(gf3gd.cents[i], gf3gd.errs[k], &eg, &deg);
-      wrresult(l, eg, deg, 45);       /* centroid (posn. err) */
-      wrresult(l, gf3gd.pars[k+2], gf3gd.errs[k+2], 61);   /* height (err) */
-      wrresult(l, gf3gd.areas[i], gf3gd.dareas[i], 77);   /* area (err) */
-      wrresult(l, gf3gd.pars[k], gf3gd.errs[k], 96-4);     /* position (err) as channel */
-      c = l + wrresult(l, gf3gd.pars[k+1], gf3gd.errs[k+1], 0);       /* width (err) as channel */
-      *c = '\0';  /* is this needed? */
-      /*mc*/
-
-  
-      }
+    wrresult(l, gf3gd.pars[k], gf3gd.errs[k], 14);
+    wrresult(l, gf3gd.pars[k+1], gf3gd.errs[k+1], 26);
+    wrresult(l, gf3gd.pars[k+2], gf3gd.errs[k+2], 40);
+    wrresult(l, gf3gd.areas[i], gf3gd.dareas[i], 54);
+    wrresult(l, gf3gd.cents[i], gf3gd.dcents[i], 68);
+    if (!energy(gf3gd.cents[i], gf3gd.dcents[i], &eg, &deg)) {
+      wrresult(l, eg, deg, 0);
+    }
     printf("%2d%s\n", i+1, l);
     if (prfile) fprintf(prfile, "%2d%s\n", i+1, l);
   }
   return 0;
-} /* typeit */
+} /* list_params */
 
 /* ======================================================================= */
 int weight(int weightmode)
@@ -5996,26 +6260,21 @@ int wrtlook(void)
 {
   /* write out look-up table to disk file */
 
-  int rlen1, rlen2;
+  int  rl = 0;
+  char buf[32];
 
   rewind(winfile);
   /* WRITE (13,ERR=800) NCLOOK,LOOKMIN,LOOKMAX
      WRITE (13,ERR=800) (LOOKTAB(I),I=1,NCLOOK) */
-#define W(a,b) (fwrite(a,b,1,winfile) != 1)
-  rlen1 = 12;
-  rlen2 = 2*gf3gd.nclook;
-  if (W(&rlen1, 4) ||
-      W(&gf3gd.nclook, 4) ||
-      W(&gf3gd.lookmin, 4) ||
-      W(&gf3gd.lookmax, 4) ||
-      W(&rlen1, 4) ||
-      W(&rlen2, 4) ||
-      W(gf3gd.looktab, rlen2) ||
-      W(&rlen2, 4)) {
+#define W(a,b) { memcpy(buf + rl, a, b); rl += b; }
+  W(&gf3gd.nclook, 4);
+  W(&gf3gd.lookmin, 4);
+  W(&gf3gd.lookmax, 4);
+  if (put_file_rec(winfile, buf, rl) ||
+      put_file_rec(winfile, gf3gd.looktab, 2*gf3gd.nclook)) {
     printf("Error: cannot write to look-up file.\n");
     return 1;
   }
-#undef W
   return 0;
 } /* wrtlook */
 
@@ -6025,8 +6284,8 @@ int wrtsp(char *ans, int nc)
   /* write spectrum in spec array to disk file
      default file extension = .spe */
 
-  int  iext, i2, c1 = 1, rlen;
-  char fn[80];
+  int  iext, i2, c1 = 1, rl = 0;
+  char fn[80], buf[32];
   FILE *file;
 
   strncpy(ans, "  ", 2);
@@ -6039,7 +6298,7 @@ int wrtsp(char *ans, int nc)
 
   /* open output file */
   iext = setext(fn, ".spe", 80);
-  if (!(file = open_new_unf(fn))) return 1;
+  if (!(file = open_new_file(fn, 0))) return 1;
   strncpy(gf3gd.filnam, fn, 80);
 
   /* ask for spectrum name */
@@ -6053,26 +6312,19 @@ int wrtsp(char *ans, int nc)
   if (nc < 8) memset(&gf3gd.namesp[nc], ' ', 8-nc);
 
   /* write out spectrum */
-#define W(a,b) if (fwrite(a,b,1,file) != 1) goto WERR;
-  rlen = 24;    /* length of first record */
   i2 = gf3gd.maxch + 1;
-  W(&rlen,4);
   W(gf3gd.namesp,8); W(&i2,4); W(&c1,4); W(&c1,4); W(&c1,4);
-  W(&rlen,4);
-  rlen = 4*i2;  /* length of second record */
-  W(&rlen,4);
-  W(gf3gd.spec,i2*4);
-  W(&rlen,4);
-
 #undef W
+  if (put_file_rec(file, buf, rl) ||
+      put_file_rec(file, gf3gd.spec, 4*i2)) {
+    file_error("write to", fn);
+    fclose(file);
+    return 1;
+  }
   fclose(file);
   return 0;
-
- WERR:
-  file_error("write to", fn);
-  fclose(file);
-  return 1;
 } /* wrtsp */
+
 /* ======================================================================= */
 int report_curs(int ix, int iy)
 {
