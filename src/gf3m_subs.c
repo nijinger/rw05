@@ -4418,7 +4418,18 @@ int gfexec(char *ans, int nc)
     gf3gd.maxch = gf3gd.maxx;
     strncpy(gf3gd.filnam,"--------",80);
     strncpy(gf3gd.namesp,"PROJX   ",8);
-    gfexec("DS 1",4);
+    if(!strncmp(ans,"PRojx",5)){
+        inin(ans+5,nc-5,&idata,&in,&in2);
+    }else if(!strncmp(ans,"PX",2)){
+        inin(ans+2,nc-2,&idata,&in,&in2);
+    }
+    if(idata == 0)
+      gfexec("DS 1",4);
+    else {
+        char nans[128];
+        sprintf(nans,"GC %d",idata);
+        gfexec(nans,strlen(nans));
+    }
   } else if (!strncmp(ans, "PRojy", 5) || !strncmp(ans, "PY", 2)) {
     /* display matrix x projection */
     for (i = 0; i <= gf3gd.maxy; i++) {
@@ -4427,7 +4438,18 @@ int gfexec(char *ans, int nc)
     gf3gd.maxch = gf3gd.maxy;
     strncpy(gf3gd.filnam,"--------",80);
     strncpy(gf3gd.namesp,"PROJY   ",8);
-    gfexec("DS 1",4);
+    if(!strncmp(ans,"PRojy",5)){
+        inin(ans+5,nc-5,&idata,&in,&in2);
+    }else if(!strncmp(ans,"PY",2)){
+        inin(ans+2,nc-2,&idata,&in,&in2);
+    }
+    if(idata == 0)
+      gfexec("DS 1",4);
+    else {
+        char nans[128];
+        sprintf(nans,"GC %d",idata);
+        gfexec(nans,strlen(nans));
+    }
   } else if (!strncmp(ans, "GAtex", 5) || !strncmp(ans, "GX", 2)) {
     /* gate on x projection */
     gate('x');
@@ -4517,6 +4539,10 @@ int gfexec(char *ans, int nc)
       else
           vect(ich,ich1);
       finig();
+  }else if(!strncmp(ans, "FN", 2)){
+      printf("Current spectrum name     : %s\n",gf3gd.namesp);
+      printf("Current spectrum file name: %s\n",gf3gd.filnam);
+      printf("Current matrix file name  : %s\n",gf3gd.matfilnam);
   }
   /*mc end new commands */
 
