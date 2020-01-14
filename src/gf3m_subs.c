@@ -4423,9 +4423,8 @@ int gfexec(char *ans, int nc)
     }else if(!strncmp(ans,"PX",2)){
         inin(ans+2,nc-2,&idata,&in,&in2);
     }
-    if(idata == 0)
-      gfexec("DS 1",4);
-    else {
+    gfexec("DS 1",4);
+    if(idata != 0){
         char nans[128];
         sprintf(nans,"GC %d",idata);
         gfexec(nans,strlen(nans));
@@ -4443,9 +4442,8 @@ int gfexec(char *ans, int nc)
     }else if(!strncmp(ans,"PY",2)){
         inin(ans+2,nc-2,&idata,&in,&in2);
     }
-    if(idata == 0)
-      gfexec("DS 1",4);
-    else {
+    gfexec("DS 1",4);
+    if(idata != 0) {
         char nans[128];
         sprintf(nans,"GC %d",idata);
         gfexec(nans,strlen(nans));
@@ -4510,10 +4508,11 @@ int gfexec(char *ans, int nc)
         gf3gd.randsinglesmaxy = numch - 1;
       }
   }else if (!strncmp(ans, "! ", 2)){
-      char *command = malloc((nc-2)*sizeof(char));
-      strncpy(command,ans+2,nc-2);
-      system(command);
-  }else if (!strncmp(ans, "XC", 2)){
+      char comd[120];
+      strncpy(comd,ans+2,strlen(ans)-2);
+      system(comd);
+      memset(comd,0,sizeof(char)*120);
+  }else if (!strncmp(ans, "XC", 2) || !strncmp(ans,"CX",2)){
       if(!gf3gd.disp) return 1;
       int ix,iy;
       float ich, ich1,ich2,x,y;
@@ -4543,6 +4542,10 @@ int gfexec(char *ans, int nc)
       printf("Current spectrum name     : %s\n",gf3gd.namesp);
       printf("Current spectrum file name: %s\n",gf3gd.filnam);
       printf("Current matrix file name  : %s\n",gf3gd.matfilnam);
+  }else if(!inin(ans,nc,&idata,&in,&in2)){
+      char nans[120];
+      sprintf(nans,"GC %d",idata);
+      gfexec(nans,strlen(nans));
   }
   /*mc end new commands */
 
