@@ -3935,11 +3935,17 @@ int gfexec(char *ans, int nc)
         gf3gd.numx = fabs(x2 - x1);
         gf3gd.lox = x1;
         if (x1 > x2) gf3gd.lox = x2;
-      } else {
+      } else if (idata!=0 && in ==0 ){
         gf3gd.lox = gf3gd.lox + gf3gd.numx/2 - idata/2;
         gf3gd.numx = idata;
         printf ("  expanding to %d...%d\n", gf3gd.lox, gf3gd.lox + gf3gd.numx - 1);
-      }
+      } else if (in !=0){
+          idata = fabs(idata);
+          in = fabs(in);
+        gf3gd.lox = idata<in? idata : in;
+        gf3gd.numx = in - idata;
+        printf ("  expanding to %d...%d\n", gf3gd.lox, gf3gd.lox + gf3gd.numx - 1);
+      } else goto BADCMD;
       /*mc*/
 
 
@@ -4532,7 +4538,12 @@ int gfexec(char *ans, int nc)
       x = ich;
       y = (float)gf3gd.locnt;
       pspot(x,y);
-      y = gf3gd.spec[(int)ich];
+    float hicnt = (float) (gf3gd.locnt + gf3gd.ncnts);
+    if (gf3gd.ncnts <= 0) 
+      for (i = gf3gd.loch; i <= gf3gd.hich; ++i) {
+	if (hicnt < gf3gd.spec[i]) hicnt = gf3gd.spec[i];
+      }
+      y = hicnt;
       if(ich1==0)
         vect(x,y);
       else

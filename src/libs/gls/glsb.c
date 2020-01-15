@@ -1388,6 +1388,7 @@ int gls_exec2(char *ans)
     open_close_gap();
     /* RD, RD1 */
   } else if (!strncmp(ans, "RD", 2)) {
+      hilite(-1);
     calc_gls_fig();
     if (ans[2] == '1') {
       calc_band();
@@ -1432,6 +1433,17 @@ int gls_exec2(char *ans)
     path(1);
   } else if (!strncmp(ans, "XG", 2)) {
     examine_gamma();
+  } else if ( *ans == 'X' ){
+      float ec,ew,e2;
+      ffin(ans+1,strlen(ans)-1,&ec,&ew,&e2);
+      ec = fabs(ec);
+      ew = fabs(ew);
+      if(ew<=0) ew = 1;
+      int j;
+      for(j = 0; j<glsgd.ngammas;j++){
+          if(fabs(glsgd.gam[j].e-ec)<ew)
+              hilite(j);
+      }
   } else {
     return 1;    /* command not recognized */
   }
