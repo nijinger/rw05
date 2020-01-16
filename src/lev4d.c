@@ -436,6 +436,7 @@ int lvt8r_exec(char *ans, int nc)
     elgd.lox = idata;
   } else if (*ans == 'X') {
     if (examine(ans, nc)) goto ERR;
+    printf("YES X Has been called!\n");
   } else if (!strncmp(ans, "YA", 2)) {
     /* YA: modify Y0,NY */
     while ((nc = ask(ans, 80, "Y0 = ? (return for %i)", elgd.locnt)) &&

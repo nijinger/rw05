@@ -1434,6 +1434,7 @@ int gls_exec2(char *ans)
   } else if (!strncmp(ans, "XG", 2)) {
     examine_gamma();
   } else if ( *ans == 'X' ){
+      hilite(-1);
       float ec,ew,e2;
       ffin(ans+1,strlen(ans)-1,&ec,&ew,&e2);
       ec = fabs(ec);
@@ -1624,6 +1625,7 @@ int hilitemod(int n, int igam)
   initg2(&nsx, &nsy);
   if (igam < 0) {
     setcolor(-1);
+    setcolor(0);
     for (j = 0; j < nsave; ++j) {
       k  = igam_save[j];
       x1 = glsgd.gam[k].elx -
