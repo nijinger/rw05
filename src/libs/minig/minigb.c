@@ -463,13 +463,22 @@ int save_xwg(char *in)
 int setcolor(int icol)
 {
   int i;
-
-  i = icol + 1;
-  if (i < 1 || i > 16) return 1;
+  GC j;
 
   /* call finig to dump stored plot array
      before changing attribute block */
   finig();
+
+  if (icol == -1) {
+    j = gc_id;
+    gc_id = gc_comp_id;
+    gc_comp_id = j;
+    return 0;
+  }
+
+  i = icol + 1;
+  if (i < 1 || i > 16) return 1;
+
   XSetForeground(disp_id, gc_id, color[i]);
 
   /* log info to temp file for possible later hardcopy */
