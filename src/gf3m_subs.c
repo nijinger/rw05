@@ -4515,9 +4515,9 @@ int gfexec(char *ans, int nc)
       }
   }else if (!strncmp(ans, "! ", 2)){
       char comd[120];
+      memset(comd,0,sizeof(char)*120);
       strncpy(comd,ans+2,strlen(ans)-2);
       system(comd);
-      memset(comd,0,sizeof(char)*120);
   }else if (!strncmp(ans, "XC", 2) || !strncmp(ans,"CX",2)){
       if(!gf3gd.disp) return 1;
       int ix,iy;

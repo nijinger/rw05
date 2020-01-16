@@ -104,10 +104,11 @@ int gls_exec(char *ans)
       exit(0);
     }
   } else if (!strncmp(ans, "! ", 2)){
-      int nc = strlen(ans);
-      char *command = (char*)malloc((nc-2)*sizeof(char));
-      strncpy(command,ans+2,nc-2);
-      system(command);
+      char comd[120];
+      memset(comd,0,sizeof(char)*120);
+      strncpy(comd,ans+2,strlen(ans)-2);
+      system(comd);
+      printf("%s\n",comd);
   }else if (!strncmp(ans, "FN", 2)){
       printf("Current file: %s\n",glsgd.gls_file_name);
   }else {
