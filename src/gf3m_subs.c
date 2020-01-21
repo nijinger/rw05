@@ -3928,7 +3928,7 @@ int gfexec(char *ans, int nc)
 
       /*mc*/
       if (inin(ans + 2, nc - 2, &idata, &in, &in2)) goto BADCMD;
-      if (idata == 0){
+      if (idata == 0 && in == 0){
         /* this is how original did it */
         retic(&x1, &y, ans);
         retic(&x2, &y, ans);
@@ -3943,7 +3943,7 @@ int gfexec(char *ans, int nc)
           idata = fabs(idata);
           in = fabs(in);
         gf3gd.lox = idata<in? idata : in;
-        gf3gd.numx = in - idata;
+        gf3gd.numx = fabs(in - idata);
         printf ("  expanding to %d...%d\n", gf3gd.lox, gf3gd.lox + gf3gd.numx - 1);
       } else goto BADCMD;
       /*mc*/

@@ -108,7 +108,6 @@ int gls_exec(char *ans)
       memset(comd,0,sizeof(char)*120);
       strncpy(comd,ans+2,strlen(ans)-2);
       system(comd);
-      printf("%s\n",comd);
   }else if (!strncmp(ans, "FN", 2)){
       printf("Current file: %s\n",glsgd.gls_file_name);
   }else {
